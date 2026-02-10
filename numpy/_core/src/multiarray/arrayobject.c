@@ -470,9 +470,7 @@ array_dealloc(PyArrayObject *self)
     (void)ret;
     assert(ret == 0);  // should always succeed if unraisable.
     // Only done on actual deallocation, nothing allocated by numpy.
-    if (((PyArrayObject_fields *)self)->weakreflist != NULL) {
-        PyObject_ClearWeakRefs((PyObject *)self);
-    }
+    PyObject_ClearWeakRefs((PyObject *)self);
     Py_TYPE(self)->tp_free((PyObject *)self);
 }
 
