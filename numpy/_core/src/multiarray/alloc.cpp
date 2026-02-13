@@ -73,6 +73,9 @@ typedef struct cache_destructor {
         datacache = &_datacache[0];
     }
     ~cache_destructor() {
+        if (Py_IsFinalizing()) {
+            return;
+        }
         for (npy_uint i = 0; i < NBUCKETS; ++i) {
             while (datacache[i].available > 0) {
                 PyMem_Free(datacache[i].ptrs[--datacache[i].available]);
