@@ -73,17 +73,14 @@ typedef struct cache_destructor {
         datacache = &_datacache[0];
     }
     ~cache_destructor() {
-        if (Py_IsFinalizing()) {
-            return;
-        }
         for (npy_uint i = 0; i < NBUCKETS; ++i) {
             while (datacache[i].available > 0) {
-                PyMem_Free(datacache[i].ptrs[--datacache[i].available]);
+                PyMem_RawFree(datacache[i].ptrs[--datacache[i].available]);
             }
         }
         for (npy_uint i = 0; i < NBUCKETS_DIM; ++i) {
             while (dimcache[i].available > 0) {
-                PyMem_Free(dimcache[i].ptrs[--dimcache[i].available]);
+                PyMem_RawFree(dimcache[i].ptrs[--dimcache[i].available]);
             }
         }
     }
@@ -296,10 +293,10 @@ PyDataMem_NEW(size_t size)
     void *result;
 
     assert(size != 0);
-    result = PyMem_Malloc(size);
+    result = PyMem_RawMalloc(size);
     int ret = PyTraceMalloc_Track(NPY_TRACE_DOMAIN, (npy_uintp)result, size);
     if (ret == -1) {
-        PyMem_Free(result);
+        PyMem_RawFree(result);
         return NULL;
     }
     return result;
@@ -313,10 +310,10 @@ PyDataMem_NEW_ZEROED(size_t nmemb, size_t size)
 {
     void *result;
 
-    result = PyMem_Calloc(nmemb, size);
+    result = PyMem_RawCalloc(nmemb, size);
     int ret = PyTraceMalloc_Track(NPY_TRACE_DOMAIN, (npy_uintp)result, nmemb * size);
     if (ret == -1) {
-        PyMem_Free(result);
+        PyMem_RawFree(result);
         return NULL;
     }
     return result;
@@ -329,7 +326,7 @@ NPY_NO_EXPORT void
 PyDataMem_FREE(void *ptr)
 {
     PyTraceMalloc_Untrack(NPY_TRACE_DOMAIN, (npy_uintp)ptr);
-    PyMem_Free(ptr);
+    PyMem_RawFree(ptr);
 }
 
 /*NUMPY_API
@@ -342,10 +339,10 @@ PyDataMem_RENEW(void *ptr, size_t size)
 
     assert(size != 0);
     PyTraceMalloc_Untrack(NPY_TRACE_DOMAIN, (npy_uintp)ptr);
-    result = PyMem_Realloc(ptr, size);
+    result = PyMem_RawRealloc(ptr, size);
     int ret = PyTraceMalloc_Track(NPY_TRACE_DOMAIN, (npy_uintp)result, size);
     if (ret == -1) {
-        PyMem_Free(result);
+        PyMem_RawFree(result);
         return NULL;
     }
     return result;
@@ -357,7 +354,7 @@ PyDataMem_RENEW(void *ptr, size_t size)
 static inline void *
 default_malloc(void *NPY_UNUSED(ctx), size_t size)
 {
-    return _npy_alloc_cache(size, 1, NBUCKETS, datacache, &PyMem_Malloc);
+    return _npy_alloc_cache(size, 1, NBUCKETS, datacache, &PyMem_RawMalloc);
 }
 
 // The default data mem allocator calloc routine does not make use of a ctx.
@@ -369,13 +366,13 @@ default_calloc(void *NPY_UNUSED(ctx), size_t nelem, size_t elsize)
     void * p;
     size_t sz = nelem * elsize;
     if (sz < NBUCKETS) {
-        p = _npy_alloc_cache(sz, 1, NBUCKETS, datacache, &PyMem_Malloc);
+        p = _npy_alloc_cache(sz, 1, NBUCKETS, datacache, &PyMem_RawMalloc);
         if (p) {
             memset(p, 0, sz);
         }
         return p;
     }
-    p = PyMem_Calloc(nelem, elsize);
+    p = PyMem_RawCalloc(nelem, elsize);
     if (p) {
         indicate_hugepages(p, sz);
     }
@@ -388,7 +385,7 @@ default_calloc(void *NPY_UNUSED(ctx), size_t nelem, size_t elsize)
 static inline void *
 default_realloc(void *NPY_UNUSED(ctx), void *ptr, size_t new_size)
 {
-    return PyMem_Realloc(ptr, new_size);
+    return PyMem_RawRealloc(ptr, new_size);
 }
 
 // The default data mem allocator free routine does not make use of a ctx.
@@ -397,7 +394,7 @@ default_realloc(void *NPY_UNUSED(ctx), void *ptr, size_t new_size)
 static inline void
 default_free(void *NPY_UNUSED(ctx), void *ptr, size_t size)
 {
-    _npy_free_cache(ptr, size, NBUCKETS, datacache, &PyMem_Free);
+    _npy_free_cache(ptr, size, NBUCKETS, datacache, &PyMem_RawFree);
 }
 
 /* Memory handler global default */
