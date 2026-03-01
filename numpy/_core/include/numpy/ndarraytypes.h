@@ -614,14 +614,14 @@ typedef struct {
  * instead. See npy_2_compat.h.
  */
 
-#if NPY_FEATURE_VERSION >= NPY_2_0_API_VERSION
+#if NPY_FEATURE_VERSION >= NPY_2_0_API_VERSION || defined(_Py_OPAQUE_PYOBJECT)
 
 #if !defined(_Py_OPAQUE_PYOBJECT)
 typedef struct _PyArray_Descr {
+        PyObject_HEAD
 #else
 typedef struct _PyArray_Descr_fields {
 #endif
-        PyObject_HEAD
         /*
          * the type object representing an
          * instance of this type -- should not
@@ -687,17 +687,26 @@ typedef struct {
 
 #endif  /* 1.x and 2.x compatible version */
 
-#if !defined(_Py_OPAQUE_PYOBJECT)
-typedef PyArray_Descr_fields PyArray_Descr;
-#else
-
-/*
- * Internal version of the Descriptor struct
- * is opaque. Use accessor functions to get data from
- * the descriptor object
- */
 typedef struct _PyArray_Descr PyArray_Descr;
+
+#ifndef _Py_OPAQUE_PYOBJECT
+static inline PyArray_Descr_fields *
+PyDataType_GET_ITEM_DATA(const PyArray_Descr *dtype)
+{
+    return (PyArray_Descr_fields *)dtype;
+}
+#else
+PyArray_Descr_fields *
+_PyDataType_GET_ITEM_DATA(const PyArray_Descr *dtype);
+#define PyDataType_GET_ITEM_DATA(dtype) _PyDataType_GET_ITEM_DATA((PyArray_Descr *)(dtype))
 #endif
+// defined here to avoid a forward-declaration
+static inline int _PyDataType_TYPENUM(const PyArray_Descr *descr)
+{
+    return PyDataType_GET_ITEM_DATA(descr)->type_num;
+}
+
+#define PyDataType_TYPENUM(descr) _PyDataType_TYPENUM((PyArray_Descr *)(descr))
 
 
 /*
@@ -750,9 +759,6 @@ typedef struct {
         NpyAuxData *c_metadata;
         npy_hash_t hash;
 } PyArray_DescrProto;
-#else
-typedef _PyArray_Descr _PyArray_LegacyDescr;
-typedef _PyArray_Descr PyArray_DescrProto;
 #endif
 
 typedef struct _arr_descr {
@@ -795,7 +801,9 @@ typedef struct {
  */
 /* This struct will be moved to a private header in a future release */
 typedef struct tagPyArrayObject_fields {
+#ifndef _Py_OPAQUE_PYOBJECT
     PyObject_HEAD
+#endif
     /* Pointer to the raw data buffer */
     char *data;
     /* The number of dimensions, also called 'ndim' */
@@ -847,6 +855,7 @@ typedef struct tagPyArrayObject_fields {
  * To hide the implementation details, we only expose
  * the Python struct HEAD.
  */
+#ifndef _Py_OPAQUE_PYOBJECT
 #if !defined(NPY_NO_DEPRECATED_API) || \
     (NPY_NO_DEPRECATED_API < NPY_1_7_API_VERSION)
 
@@ -855,6 +864,17 @@ typedef PyArrayObject_fields PyArrayObject;
 typedef struct tagPyArrayObject {
         PyObject_HEAD
 } PyArrayObject;
+#endif
+static inline PyArrayObject_fields *
+PyArray_GET_ITEM_DATA(const PyArrayObject *arr)
+{
+    return (PyArrayObject_fields *)arr;
+}
+#else
+typedef struct tagPyArrayObject PyArrayObject;
+PyArrayObject_fields *
+_PyArray_GET_ITEM_DATA(const PyArrayObject *arr);
+#define PyArray_GET_ITEM_DATA(arr) _PyArray_GET_ITEM_DATA((PyArrayObject *)(arr))
 #endif
 
 /*
@@ -870,7 +890,7 @@ typedef struct tagPyArrayObject {
  */
 
 /* Mirrors buffer object to ptr */
-
+#ifndef _Py_OPAQUE_PYOBJECT
 typedef struct {
         PyObject_HEAD
         PyObject *base;
@@ -878,6 +898,7 @@ typedef struct {
         npy_intp len;
         int flags;
 } PyArray_Chunk;
+#endif
 
 typedef struct {
     NPY_DATETIMEUNIT base;
@@ -1193,13 +1214,16 @@ typedef void (NpyIter_GetMultiIndexFunc)(NpyIter *iter,
 #define NPY_ITER_GLOBAL_FLAGS               0x0000ffff
 #define NPY_ITER_PER_OP_FLAGS               0xffff0000
 
-
 /*****************************
  * Basic iterator object
  *****************************/
 
 /* FWD declaration */
+#ifndef _Py_OPAQUE_PYOBJECT
+typedef struct PyArrayIterObject_fields PyArrayIterObject;
+#else
 typedef struct PyArrayIterObject_tag PyArrayIterObject;
+#endif
 
 /*
  * type of the function which translates a set of coordinates to a
@@ -1208,8 +1232,10 @@ typedef struct PyArrayIterObject_tag PyArrayIterObject;
 typedef char* (*npy_iter_get_dataptr_t)(
         PyArrayIterObject* iter, const npy_intp*);
 
-struct PyArrayIterObject_tag {
+typedef struct PyArrayIterObject_fields {
+#ifndef _Py_OPAQUE_PYOBJECT
         PyObject_HEAD
+#endif
         int               nd_m1;            /* number of dimensions - 1 */
         npy_intp          index, size;
         npy_intp          coordinates[NPY_MAXDIMS_LEGACY_ITERS];/* N-dimensional loop */
@@ -1225,8 +1251,18 @@ struct PyArrayIterObject_tag {
         npy_intp          limits[NPY_MAXDIMS_LEGACY_ITERS][2];
         npy_intp          limits_sizes[NPY_MAXDIMS_LEGACY_ITERS];
         npy_iter_get_dataptr_t translate;
-} ;
+} PyArrayIterObject_fields;
 
+#ifndef _Py_OPAQUE_PYOBJECT
+static inline PyArrayIterObject_fields *
+PyArrayIter_GET_ITEM_DATA(const PyArrayIterObject *iter)
+{
+    return (PyArrayIterObject_fields *)iter;
+}
+#else
+PyArrayIterObject_fields *_PyArrayIter_GET_ITEM_DATA(const PyArrayIterObject *iter);
+#define PyArrayIter_GET_ITEM_DATA(iter) _PyArrayIter_GET_ITEM_DATA((PyArrayIterObject *)(iter))
+#endif
 
 /* Iterator API */
 #define PyArrayIter_Check(op) PyObject_TypeCheck((op), &PyArrayIter_Type)
@@ -1340,9 +1376,10 @@ struct PyArrayIterObject_tag {
  * Any object passed to PyArray_Broadcast must be binary compatible
  * with this structure.
  */
-
 typedef struct {
+#ifndef _Py_OPAQUE_PYOBJECT
         PyObject_HEAD
+#endif
         int                  numiter;                 /* number of iters */
         npy_intp             size;                    /* broadcasted size */
         npy_intp             index;                   /* current index */
@@ -1367,9 +1404,21 @@ typedef struct {
 #else
         PyArrayIterObject    *iters[];
 #endif
-} PyArrayMultiIterObject;
+} PyArrayMultiIterObject_fields;
 
-#define _PyMIT(m) ((PyArrayMultiIterObject *)(m))
+#ifndef _Py_OPAQUE_PYOBJECT
+typedef PyArrayMultiIterObject_fields PyArrayMultiIterObject;
+static inline PyArrayMultiIterObject_fields *PyArrayMultiIter_GET_ITEM_DATA(const PyArrayMultiIterObject *multi)
+{
+    return (PyArrayMultiIterObject_fields *)multi;
+}
+#else
+typedef struct PyArrayMultiIterObject_tag PyArrayMultiIterObject;
+PyArrayMultiIterObject_fields *_PyArrayMultiIter_GET_ITEM_DATA(const PyArrayMultiIterObject *multi);
+#define PyArrayMultiIter_GET_ITEM_DATA(multi) _PyArrayMultiIter_GET_ITEM_DATA((PyArrayMultiIterObject *)(multi))
+#endif
+
+#define _PyMIT(m) (PyArrayMultiIter_GET_ITEM_DATA((PyArrayMultiIterObject *)m))
 #define PyArray_MultiIter_RESET(multi) do {                                   \
         int __npy_mi;                                                         \
         _PyMIT(multi)->index = 0;                                             \
@@ -1415,44 +1464,43 @@ typedef struct {
 static NPY_INLINE int
 PyArray_MultiIter_NUMITER(PyArrayMultiIterObject *multi)
 {
-    return multi->numiter;
+    return _PyMIT(multi)->numiter;
 }
 
 
 static NPY_INLINE npy_intp
 PyArray_MultiIter_SIZE(PyArrayMultiIterObject *multi)
 {
-    return multi->size;
+    return _PyMIT(multi)->size;
 }
 
 
 static NPY_INLINE npy_intp
 PyArray_MultiIter_INDEX(PyArrayMultiIterObject *multi)
 {
-    return multi->index;
+    return _PyMIT(multi)->index;
 }
 
 
 static NPY_INLINE int
 PyArray_MultiIter_NDIM(PyArrayMultiIterObject *multi)
 {
-    return multi->nd;
+    return _PyMIT(multi)->nd;
 }
 
 
 static NPY_INLINE npy_intp *
 PyArray_MultiIter_DIMS(PyArrayMultiIterObject *multi)
 {
-    return multi->dimensions;
+    return _PyMIT(multi)->dimensions;
 }
 
 
 static NPY_INLINE void **
 PyArray_MultiIter_ITERS(PyArrayMultiIterObject *multi)
 {
-    return (void**)multi->iters;
+    return (void**)_PyMIT(multi)->iters;
 }
-
 
 enum {
     NPY_NEIGHBORHOOD_ITER_ZERO_PADDING,
@@ -1463,8 +1511,9 @@ enum {
 };
 
 typedef struct {
+#ifndef _Py_OPAQUE_PYOBJECT
     PyObject_HEAD
-
+#endif
     /*
      * PyArrayIterObject part: keep this in this exact order
      */
@@ -1504,7 +1553,19 @@ typedef struct {
     char* constant;
 
     int mode;
-} PyArrayNeighborhoodIterObject;
+} PyArrayNeighborhoodIterObject_fields;
+
+#ifndef _Py_OPAQUE_PYOBJECT
+typedef PyArrayNeighborhoodIterObject_fields PyArrayNeighborhoodIterObject;
+static inline PyArrayNeighborhoodIterObject_fields *PyArrayNeighborhoodIter_GET_ITEM_DATA(const PyArrayNeighborhoodIterObject *iter)
+{
+    return (PyArrayNeighborhoodIterObject_fields *)iter;
+}
+#else
+typedef struct PyArrayNeighborhoodIterObject_tag PyArrayNeighborhoodIterObject;
+PyArrayNeighborhoodIterObject_fields *_PyArrayNeighborhoodIter_GET_ITEM_DATA(const PyArrayNeighborhoodIterObject *iter);
+#define PyArrayNeighborhoodIter_GET_ITEM_DATA(iter) _PyArrayNeighborhoodIter_GET_ITEM_DATA((PyArrayNeighborhoodIterObject *)(iter))
+#endif
 
 /*
  * Neighborhood iterator API
@@ -1554,11 +1615,10 @@ PyArrayNeighborhoodIter_Next2D(PyArrayNeighborhoodIterObject* iter);
 
 #define PyArray_FORTRAN_IF(m) ((PyArray_CHKFLAGS(m, NPY_ARRAY_F_CONTIGUOUS) ? \
                                NPY_ARRAY_F_CONTIGUOUS : 0))
-
 static inline int
 PyArray_NDIM(const PyArrayObject *arr)
 {
-    return ((PyArrayObject_fields *)arr)->nd;
+    return PyArray_GET_ITEM_DATA(arr)->nd;
 }
 
 static inline void *
@@ -1615,14 +1675,6 @@ PyArray_FLAGS(const PyArrayObject *arr)
     return ((PyArrayObject_fields *)arr)->flags;
 }
 
-// defined here to avoid a forward-declaration
-static inline int _PyDataType_TYPENUM(const PyArray_Descr *descr)
-{
-    return ((PyArray_Descr_fields *)descr)->type_num;
-}
-
-#define PyDataType_TYPENUM(descr) _PyDataType_TYPENUM((PyArray_Descr *)(descr))
-
 static inline int
 PyArray_TYPE(const PyArrayObject *arr)
 {
@@ -1638,13 +1690,13 @@ PyArray_CHKFLAGS(const PyArrayObject *arr, int flags)
 static inline PyArray_Descr *
 PyArray_DTYPE(const PyArrayObject *arr)
 {
-    return ((PyArrayObject_fields *)arr)->descr;
+    return PyArray_GET_ITEM_DATA(arr)->descr;
 }
 
 static inline npy_intp *
 PyArray_SHAPE(const PyArrayObject *arr)
 {
-    return ((PyArrayObject_fields *)arr)->dimensions;
+    return PyArray_GET_ITEM_DATA(arr)->dimensions;
 }
 
 /*
@@ -1654,7 +1706,7 @@ PyArray_SHAPE(const PyArrayObject *arr)
 static inline void
 PyArray_ENABLEFLAGS(PyArrayObject *arr, int flags)
 {
-    ((PyArrayObject_fields *)arr)->flags |= flags;
+    PyArray_GET_ITEM_DATA(arr)->flags |= flags;
 }
 
 /*
@@ -1664,14 +1716,14 @@ PyArray_ENABLEFLAGS(PyArrayObject *arr, int flags)
 static inline void
 PyArray_CLEARFLAGS(PyArrayObject *arr, int flags)
 {
-    ((PyArrayObject_fields *)arr)->flags &= ~flags;
+    PyArray_GET_ITEM_DATA(arr)->flags &= ~flags;
 }
 
 #if NPY_FEATURE_VERSION >= NPY_1_22_API_VERSION
     static inline NPY_RETURNS_BORROWED_REF PyObject *
     PyArray_HANDLER(PyArrayObject *arr)
     {
-        return ((PyArrayObject_fields *)arr)->mem_handler;
+        return PyArray_GET_ITEM_DATA(arr)->mem_handler;
     }
 #endif
 

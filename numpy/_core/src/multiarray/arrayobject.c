@@ -1272,3 +1272,32 @@ NPY_NO_EXPORT PyTypeObject PyArray_Type = {
     .tp_getset = array_getsetlist,
     .tp_new = (newfunc)array_new,
 };
+
+PyArray_Descr_fields *
+_PyDataType_GET_ITEM_DATA(const PyArray_Descr *dtype)
+{
+    return ((PyArray_Descr_fields *)(((char *)dtype) + sizeof(PyObject)));
+}
+
+PyArrayObject_fields *
+_PyArray_GET_ITEM_DATA(const PyArrayObject *arr)
+{
+    return ((PyArrayObject_fields *)(((char *)arr) + sizeof(PyObject)));
+}
+
+PyArrayMultiIterObject_fields *
+_PyArrayMultiIter_GET_ITEM_DATA(const PyArrayMultiIterObject *multi)
+{
+    return ((PyArrayMultiIterObject_fields *)(((char *)multi) + sizeof(PyObject)));
+}
+
+PyArrayIterObject_fields *
+_PyArrayIter_GET_ITEM_DATA(const PyArrayIterObject *iter)
+{
+    return ((PyArrayIterObject_fields *)(((char *)iter) + sizeof(PyObject)));
+}
+
+PyArrayNeighborhoodIterObject_fields *
+_PyArrayNeighborhoodIter_GET_ITEM_DATA(const PyArrayNeighborhoodIterObject *iter){
+    return ((PyArrayNeighborhoodIterObject_fields *)(((char *)iter) + sizeof(PyObject)));
+}
