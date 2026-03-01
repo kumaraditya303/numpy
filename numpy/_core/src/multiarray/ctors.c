@@ -329,7 +329,7 @@ _update_descr_and_dimensions(PyArray_Descr **des, npy_intp *newdims,
 
         mystrides = newstrides + oldnd;
         /* Make new strides -- always C-contiguous */
-        tempsize = PyDataType_ELSIZE(*des);
+        tempsize = (*des)->elsize;
         for (i = numnew - 1; i >= 0; i--) {
             mystrides[i] = tempsize;
             tempsize *= mydim[i] ? mydim[i] : 1;
@@ -692,7 +692,7 @@ PyArray_NewFromDescr_int(
         }
     }
 
-    nbytes = PyDataType_ELSIZE(descr);
+    nbytes = descr->elsize;
     /*
      * Unless explicitly asked not to, we do replace dtypes in some cases.
      * This mainly means that we never create arrays with a subarray dtype
@@ -734,13 +734,12 @@ PyArray_NewFromDescr_int(
                 if (descr == NULL) {
                     return NULL;
                 }
-                if (PyDataType_TYPENUM(descr) == NPY_STRING) {
-                    PyDataType_SET_ELSIZE(descr, 1);
+                if (descr->type_num == NPY_STRING) {
+                    nbytes = descr->elsize = 1;
                 }
                 else {
-                    PyDataType_SET_ELSIZE(descr, sizeof(npy_ucs4));
+                    nbytes = descr->elsize = sizeof(npy_ucs4);
                 }
-                nbytes = PyDataType_ELSIZE(descr);
             }
         }
     }
@@ -826,7 +825,7 @@ PyArray_NewFromDescr_int(
         /* Fill the strides (or copy them if they were passed in) */
         if (strides == NULL) {
             /* fill the strides and set the contiguity flags */
-            _array_fill_strides(fa->strides, dims, nd, PyDataType_ELSIZE(descr),
+            _array_fill_strides(fa->strides, dims, nd, descr->elsize,
                                 flags, &(fa->flags));
         }
         else {
@@ -859,7 +858,7 @@ PyArray_NewFromDescr_int(
             NPY_DT_SLOTS(NPY_DTYPE(descr))->get_fill_zero_loop;
         if (get_fill_zero_loop != NULL) {
             if (get_fill_zero_loop(
-                    NULL, descr, 1, PyDataType_ELSIZE(descr), &(fill_zero_info.func),
+                    NULL, descr, 1, descr->elsize, &(fill_zero_info.func),
                     &(fill_zero_info.auxdata), &zero_flags) < 0) {
                 goto fail;
             }
@@ -915,7 +914,7 @@ PyArray_NewFromDescr_int(
                          && (fill_zero_info.func != NULL))) {
             npy_intp size = PyArray_MultiplyList(fa->dimensions, fa->nd);
             if (fill_zero_info.func(
-                    NULL, descr, data, size, PyDataType_ELSIZE(descr),
+                    NULL, descr, data, size, descr->elsize,
                     fill_zero_info.auxdata) < 0) {
                 goto fail;
             }
@@ -1139,10 +1138,10 @@ PyArray_NewLikeArrayWithShape(PyArrayObject *prototype, NPY_ORDER order,
                                         strideperm);
 
         /* Build the new strides */
-        stride = PyDataType_ELSIZE(descr);
+        stride = descr->elsize;
         if (stride == 0 && PyDataType_ISSTRING(descr)) {
             /* Special case for dtype=str or dtype=bytes. */
-            if (PyDataType_TYPENUM(descr) == NPY_STRING) {
+            if (descr->type_num == NPY_STRING) {
                 /* dtype is bytes */
                 stride = 1;
             }
@@ -1243,7 +1242,7 @@ PyArray_New(
         if (descr == NULL) {
             return NULL;
         }
-        PyDataType_SET_ELSIZE(descr, itemsize);
+        descr->elsize = itemsize;
     }
     new = PyArray_NewFromDescr(subtype, descr, nd, dims, strides,
                                data, flags, obj);
@@ -1271,7 +1270,7 @@ _dtype_from_buffer_3118(PyObject *memoryview)
         if (descr == NULL) {
             return NULL;
         }
-        PyDataType_SET_ELSIZE(descr,  view->itemsize);
+        descr->elsize = view->itemsize;
     }
     return descr;
 }
@@ -1307,7 +1306,7 @@ _array_from_buffer_3118(PyObject *memoryview)
     }
 
     /* Sanity check */
-    if (PyDataType_ELSIZE(descr) != view->itemsize) {
+    if (descr->elsize != view->itemsize) {
         /* Ctypes has bugs in its PEP3118 implementation, which we need to
          * work around.
          *
@@ -1324,8 +1323,8 @@ _array_from_buffer_3118(PyObject *memoryview)
                     PyExc_RuntimeError,
                    "Item size %zd for PEP 3118 buffer format "
                     "string %s does not match the dtype %c item size %d.",
-                    view->itemsize, view->format, PyDataType_TYPE(descr),
-                    PyDataType_ELSIZE(descr));
+                    view->itemsize, view->format, descr->type,
+                    descr->elsize);
             Py_DECREF(descr);
             return NULL;
         }
@@ -1351,7 +1350,7 @@ _array_from_buffer_3118(PyObject *memoryview)
         if (descr == NULL) {
             return NULL;
         }
-        if (PyDataType_ELSIZE(descr) != view->len) {
+        if (descr->elsize != view->len) {
             PyErr_SetString(
                     PyExc_RuntimeError,
                     "For the given ctypes object, neither the item size "
@@ -1923,7 +1922,7 @@ PyArray_FromArray(PyArrayObject *arr, PyArray_Descr *newtype, int flags)
         if (newtype == NULL) {
             return NULL;
         }
-        PyDataType_SET_ELSIZE(newtype, PyDataType_ELSIZE(oldtype));
+        newtype->elsize = oldtype->elsize;
     }
 
     if (flags & NPY_ARRAY_SAME_KIND_CASTING) {
@@ -2237,7 +2236,7 @@ PyArray_FromInterface(PyObject *origin)
      * If the dtype is NPY_VOID, see if there is extra information in
      * the 'descr' attribute.
      */
-    if (PyDataType_TYPENUM(dtype) == NPY_VOID) {
+    if (dtype->type_num == NPY_VOID) {
         PyObject *descr = NULL;
         result = PyDict_GetItemStringRef(iface, "descr", &descr);
         if (result == -1) {
@@ -3367,8 +3366,8 @@ PyArray_ArangeObj(PyObject *start, PyObject *stop, PyObject *step, PyArray_Descr
     NPY_BEGIN_THREADS_DEF;
 
     /* Datetime arange is handled specially */
-    if ((dtype != NULL && (PyDataType_TYPENUM(dtype) == NPY_DATETIME ||
-                           PyDataType_TYPENUM(dtype) == NPY_TIMEDELTA)) ||
+    if ((dtype != NULL && (dtype->type_num == NPY_DATETIME ||
+                           dtype->type_num == NPY_TIMEDELTA)) ||
             (dtype == NULL && (is_any_numpy_datetime_or_timedelta(start) ||
                               is_any_numpy_datetime_or_timedelta(stop) ||
                               is_any_numpy_datetime_or_timedelta(step)))) {
@@ -3406,7 +3405,7 @@ PyArray_ArangeObj(PyObject *start, PyObject *stop, PyObject *step, PyArray_Descr
      * If dtype is not in native byte-order then get native-byte
      * order version.  And then swap on the way out.
      */
-    if (!PyArray_ISNBO(PyDataType_BYTEORDER(dtype))) {
+    if (!PyArray_ISNBO(dtype->byteorder)) {
         native = PyArray_DescrNewByteorder(dtype, NPY_NATBYTE);
         if (native == NULL) {
             goto fail;
@@ -3444,7 +3443,7 @@ PyArray_ArangeObj(PyObject *start, PyObject *stop, PyObject *step, PyArray_Descr
 
     /* calculate the length and next = start + step*/
     length = _calc_length(start, stop, step, &next,
-                          PyTypeNum_ISCOMPLEX(PyDataType_TYPENUM(dtype)));
+                          PyTypeNum_ISCOMPLEX(dtype->type_num));
     PyObject *err = PyErr_Occurred();
     if (err) {
         if (PyErr_GivenExceptionMatches(err, PyExc_OverflowError)) {
@@ -3552,14 +3551,14 @@ array_fromfile_binary(FILE *fp, PyArray_Descr *dtype, npy_intp num, size_t *nrea
                             "could not seek in file");
             return NULL;
         }
-        num = numbytes / PyDataType_ELSIZE(dtype);
+        num = numbytes / dtype->elsize;
     }
 
     /*
      * Array creation may move sub-array dimensions from the dtype to array
      * dimensions, so we need to use the original element size when reading.
      */
-    elsize = PyDataType_ELSIZE(dtype);
+    elsize = dtype->elsize;
 
     Py_INCREF(dtype);  /* do not steal the original dtype. */
     r = (PyArrayObject *)PyArray_NewFromDescr(&PyArray_Type, dtype, 1, &num,
@@ -3616,7 +3615,7 @@ array_from_text(PyArray_Descr *dtype, npy_intp num, char const *sep, size_t *nre
     }
 
     NPY_BEGIN_ALLOW_THREADS;
-    totalbytes = bytes = size * PyDataType_ELSIZE(dtype);
+    totalbytes = bytes = size * dtype->elsize;
     dptr = PyArray_DATA(r);
     for (i = 0; num < 0 || i < num; i++) {
         stop_reading_flag = next(&stream, dptr, dtype, stream_data);
@@ -3625,7 +3624,7 @@ array_from_text(PyArray_Descr *dtype, npy_intp num, char const *sep, size_t *nre
         }
         *nread += 1;
         thisbuf += 1;
-        dptr += PyDataType_ELSIZE(dtype);
+        dptr += dtype->elsize;
         if (num < 0 && thisbuf == size) {
             totalbytes += bytes;
             /* The handler is always valid */
@@ -3649,7 +3648,7 @@ array_from_text(PyArray_Descr *dtype, npy_intp num, char const *sep, size_t *nre
         }
     }
     if (num < 0) {
-        const size_t nsize = PyArray_MAX(*nread,1)*PyDataType_ELSIZE(dtype);
+        const size_t nsize = PyArray_MAX(*nread,1)*dtype->elsize;
 
         if (nsize != 0) {
             /* The handler is always valid */
@@ -3726,7 +3725,7 @@ PyArray_FromFile(FILE *fp, PyArray_Descr *dtype, npy_intp num, char *sep)
         Py_DECREF(dtype);
         return NULL;
     }
-    if (PyDataType_ELSIZE(dtype) == 0) {
+    if (dtype->elsize == 0) {
         /* Nothing to read, just create an empty array of the requested type */
         return PyArray_NewFromDescr_int(
                 &PyArray_Type, dtype,
@@ -3850,7 +3849,7 @@ PyArray_FromBuffer(PyObject *buf, PyArray_Descr *type,
     data += offset;
     s = (npy_intp)ts - offset;
     n = (npy_intp)count;
-    itemsize = PyDataType_ELSIZE(type);
+    itemsize = type->elsize;
     if (n < 0) {
         if (itemsize == 0) {
             PyErr_SetString(PyExc_ValueError,
@@ -3938,7 +3937,7 @@ PyArray_FromString(char *data, npy_intp slen, PyArray_Descr *dtype,
         Py_DECREF(dtype);
         return NULL;
     }
-    itemsize = PyDataType_ELSIZE(dtype);
+    itemsize = dtype->elsize;
     if (itemsize == 0) {
         PyErr_SetString(PyExc_ValueError, "zero-valued itemsize");
         Py_DECREF(dtype);
@@ -3970,7 +3969,7 @@ PyArray_FromString(char *data, npy_intp slen, PyArray_Descr *dtype,
          * NewFromDescr may replace dtype to absorb subarray shape
          * into the array, so get size beforehand.
          */
-        npy_intp size_to_copy = num*PyDataType_ELSIZE(dtype);
+        npy_intp size_to_copy = num*dtype->elsize;
         ret = (PyArrayObject *)
             PyArray_NewFromDescr(&PyArray_Type, dtype,
                                  1, &num, NULL, NULL,
@@ -4046,7 +4045,7 @@ PyArray_FromIter(PyObject *obj, PyArray_Descr *dtype, npy_intp count)
         elcount = count;
     }
 
-    elsize = PyDataType_ELSIZE(dtype);
+    elsize = dtype->elsize;
 
     /*
      * Note that PyArray_DESCR(ret) may not match dtype.  There are exactly

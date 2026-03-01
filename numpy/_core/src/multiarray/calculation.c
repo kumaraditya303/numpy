@@ -241,7 +241,7 @@ PyArray_Max(PyArrayObject *ap, int axis, PyArrayObject *out)
         return NULL;
     }
     ret = PyArray_GenericReduceFunction(arr, n_ops.maximum, axis,
-                                        PyDataType_TYPENUM(PyArray_DESCR(arr)), out);
+                                        PyArray_DESCR(arr)->type_num, out);
     Py_DECREF(arr);
     return ret;
 }
@@ -260,7 +260,7 @@ PyArray_Min(PyArrayObject *ap, int axis, PyArrayObject *out)
         return NULL;
     }
     ret = PyArray_GenericReduceFunction(arr, n_ops.minimum, axis,
-                                        PyDataType_TYPENUM(PyArray_DESCR(arr)), out);
+                                        PyArray_DESCR(arr)->type_num, out);
     Py_DECREF(arr);
     return ret;
 }

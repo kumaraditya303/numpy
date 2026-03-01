@@ -173,7 +173,7 @@ enum NPY_TYPECHAR {
  * should be downstream compatible, but the actual algorithms used may be
  * different than before. The new approach should be more flexible and easier
  * to update.
- * 
+ *
  * Names with a leading underscore are private, and should only be used
  * internally by NumPy.
  *
@@ -187,7 +187,7 @@ typedef enum {
         NPY_HEAPSORT = 1,
         NPY_MERGESORT = 2,
         NPY_STABLESORT = 2,
-        // new style names 
+        // new style names
         _NPY_SORT_HEAPSORT = 1,
         NPY_SORT_DEFAULT = 0,
         NPY_SORT_STABLE = 2,
@@ -616,7 +616,7 @@ typedef struct {
 
 #if NPY_FEATURE_VERSION >= NPY_2_0_API_VERSION
 
-#if !defined(NPY_INTERNAL_BUILD) || (!NPY_INTERNAL_BUILD)
+#if !defined(_Py_OPAQUE_PYOBJECT)
 typedef struct _PyArray_Descr {
 #else
 typedef struct _PyArray_Descr_fields {
@@ -687,7 +687,7 @@ typedef struct {
 
 #endif  /* 1.x and 2.x compatible version */
 
-#if !defined(NPY_INTERNAL_BUILD) || (!NPY_INTERNAL_BUILD)
+#if !defined(_Py_OPAQUE_PYOBJECT)
 typedef PyArray_Descr_fields PyArray_Descr;
 #else
 
@@ -705,6 +705,7 @@ typedef struct _PyArray_Descr PyArray_Descr;
  * check NPY_DT_is_legacy before casting/accessing).  The struct is also not
  * valid when running on 1.x (i.e. in public API use).
  */
+#if !defined(_Py_OPAQUE_PYOBJECT)
 typedef struct {
         PyObject_HEAD
         PyTypeObject *typeobj;
@@ -749,7 +750,10 @@ typedef struct {
         NpyAuxData *c_metadata;
         npy_hash_t hash;
 } PyArray_DescrProto;
-
+#else
+typedef _PyArray_Descr _PyArray_LegacyDescr;
+typedef _PyArray_Descr PyArray_DescrProto;
+#endif
 
 typedef struct _arr_descr {
         PyArray_Descr *base;
@@ -1980,7 +1984,7 @@ typedef struct {
  * #endif
  * #ifndef NUMPY_CORE_INCLUDE_NUMPY_NPY_1_7_DEPRECATED_API_H_
  * #define NUMPY_CORE_INCLUDE_NUMPY_NPY_1_7_DEPRECATED_API_H_
- * 
+ *
  * #ifndef NPY_NO_DEPRECATED_API
  * #if defined(_WIN32)
  * #define _WARN___STR2__(x) #x

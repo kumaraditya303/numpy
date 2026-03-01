@@ -466,6 +466,8 @@ array_dealloc(PyArrayObject *self)
 {
     // NPY_TRUE flags that errors are unraisable.
     int ret = _clear_array_attributes(self, NPY_TRUE);
+    // silence unused variable warning in release builds
+    (void)ret;
     assert(ret == 0);  // should always succeed if unraisable.
     // Only done on actual deallocation, nothing allocated by numpy.
     if (((PyArrayObject_fields *)self)->weakreflist != NULL) {
@@ -1144,7 +1146,7 @@ array_new(PyTypeObject *subtype, PyObject *args, PyObject *kwds)
         descr = PyArray_DescrFromType(NPY_DEFAULT_TYPE);
     }
 
-    itemsize = PyDataType_ELSIZE(descr);
+    itemsize = descr->elsize;
 
     if (strides.len != -1) {
         npy_intp nb, off;

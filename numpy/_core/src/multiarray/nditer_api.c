@@ -878,7 +878,7 @@ NpyIter_IterationNeedsAPI(NpyIter *iter)
 
     for (int iop = 0; iop < nop; ++iop) {
         PyArray_Descr *rdt = NIT_DTYPES(iter)[iop];
-        if ((PyDataType_FLAGS(rdt) & (NPY_ITEM_REFCOUNT |
+        if ((rdt->flags & (NPY_ITEM_REFCOUNT |
                                  NPY_ITEM_IS_POINTER |
                                  NPY_NEEDS_PYAPI)) != 0) {
             /* Iteration needs API access */
@@ -1737,7 +1737,7 @@ npyiter_allocate_buffers(NpyIter *iter, char **errmsg)
          * allocate one.
          */
         if (!(flags&NPY_OP_ITFLAG_BUFNEVER)) {
-            npy_intp itemsize = PyDataType_ELSIZE(op_dtype[iop]);
+            npy_intp itemsize = op_dtype[iop]->elsize;
             buffer = PyArray_malloc(itemsize*buffersize);
             if (buffer == NULL) {
                 if (errmsg == NULL) {
@@ -2019,7 +2019,7 @@ npyiter_copy_from_buffers(NpyIter *iter)
                         maskptr, strides[maskop],
                         dst_coords, axisdata_incr,
                         dst_shape, axisdata_incr,
-                        op_transfersize, PyDataType_ELSIZE(dtypes[iop]),
+                        op_transfersize, dtypes[iop]->elsize,
                         &transferinfo[iop].write) < 0) {
                     return -1;
                 }
@@ -2031,7 +2031,7 @@ npyiter_copy_from_buffers(NpyIter *iter)
                         buffer, src_stride,
                         dst_coords, axisdata_incr,
                         dst_shape, axisdata_incr,
-                        op_transfersize, PyDataType_ELSIZE(dtypes[iop]),
+                        op_transfersize, dtypes[iop]->elsize,
                         &transferinfo[iop].write) < 0) {
                     return -1;
                 }
@@ -2047,7 +2047,7 @@ npyiter_copy_from_buffers(NpyIter *iter)
         else if (transferinfo[iop].clear.func != NULL) {
             NPY_IT_DBG_PRINT1(
                     "Iterator: clearing refs of operand %d\n", (int)iop);
-            npy_intp buf_stride = PyDataType_ELSIZE(dtypes[iop]);
+            npy_intp buf_stride = dtypes[iop]->elsize;
             // TODO: transfersize is too large for reductions
             if (transferinfo[iop].clear.func(
                     NULL, transferinfo[iop].clear.descr, buffer, transfersize,
@@ -2208,7 +2208,7 @@ npyiter_copy_to_buffers(NpyIter *iter, char **prev_dataptrs)
         npy_intp *src_strides;
         npy_intp *src_coords = &zero;
         npy_intp *src_shape;
-        npy_intp src_itemsize = PyDataType_ELSIZE(PyArray_DTYPE(operands[iop]));
+        npy_intp src_itemsize = PyArray_DTYPE(operands[iop])->elsize;
 
         npyiter_fill_buffercopy_params(nop, iop, ndim, op_itflags[iop],
             transfersize, bufferdata, axisdata, outer_axisdata,
@@ -2291,7 +2291,7 @@ npyiter_clear_buffers(NpyIter *iter)
         /* Buffer cannot be re-used (not that we should ever try!) */
         op_itflags[iop] &= ~NPY_OP_ITFLAG_BUF_REUSABLE;
 
-        int itemsize = PyDataType_ELSIZE(dtypes[iop]);
+        int itemsize = dtypes[iop]->elsize;
         if (transferinfo[iop].clear.func(NULL,
                 dtypes[iop], *buffers, NBF_SIZE(bufferdata), itemsize,
                 transferinfo[iop].clear.auxdata) < 0) {

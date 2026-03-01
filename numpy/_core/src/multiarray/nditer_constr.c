@@ -567,7 +567,7 @@ NpyIter_Copy(NpyIter *iter)
                     buffers[iop] = NULL;
                 }
                 else {
-                    itemsize = PyDataType_ELSIZE(dtypes[iop]);
+                    itemsize = dtypes[iop]->elsize;
                     buffers[iop] = PyArray_malloc(itemsize*buffersize);
                     if (buffers[iop] == NULL) {
                         out_of_memory = 1;
@@ -1100,10 +1100,10 @@ npyiter_prepare_one_operand(PyArrayObject **op,
          */
         if (!(flags & NPY_ITER_REFS_OK)) {
             PyArray_Descr *dt = PyArray_DESCR(*op);
-            if (((PyDataType_FLAGS(dt) & (NPY_ITEM_REFCOUNT |
+            if (((dt->flags & (NPY_ITEM_REFCOUNT |
                            NPY_ITEM_IS_POINTER)) != 0) ||
                     (dt != *op_dtype &&
-                        ((PyDataType_FLAGS(*op_dtype) & (NPY_ITEM_REFCOUNT |
+                        (((*op_dtype)->flags & (NPY_ITEM_REFCOUNT |
                                              NPY_ITEM_IS_POINTER))) != 0)) {
                 PyErr_SetString(PyExc_TypeError,
                         "Iterator operand or requested dtype holds "
@@ -1116,7 +1116,7 @@ npyiter_prepare_one_operand(PyArrayObject **op,
         /* Check if the operand is in the byte order requested */
         if (op_flags & NPY_ITER_NBO) {
             /* Check byte order */
-            if (!PyArray_ISNBO(PyDataType_BYTEORDER(*op_dtype))) {
+            if (!PyArray_ISNBO((*op_dtype)->byteorder)) {
                 /* Replace with a new descr which is in native byte order */
                 Py_SETREF(*op_dtype,
                           PyArray_DescrNewByteorder(*op_dtype, NPY_NATIVE));
@@ -2238,7 +2238,7 @@ npyiter_find_buffering_setup(NpyIter *iter, npy_intp buffersize)
         npy_intp inner_stride;
         npy_intp reduce_outer_stride;
         if (op_is_buffered) {
-            npy_intp itemsize = PyDataType_ELSIZE(NIT_DTYPES(iter)[iop]);
+            npy_intp itemsize = NIT_DTYPES(iter)[iop]->elsize;
             /*
              * A buffered operand has a stride of itemsize unless we use
              * reduce logic.  In that case, either the inner or outer stride
@@ -2839,7 +2839,7 @@ npyiter_get_common_dtype(int nop, PyArrayObject **op,
                 break;
         }
         if (i == ndtypes) {
-            if (ndtypes == 1 || PyArray_ISNBO(PyDataType_BYTEORDER(ret))) {
+            if (ndtypes == 1 || PyArray_ISNBO(ret->byteorder)) {
                 Py_INCREF(ret);
             }
             else {
@@ -2881,7 +2881,7 @@ npyiter_new_temp_array(NpyIter *iter, PyTypeObject *subtype,
 
     npy_int8 *perm = NIT_PERM(iter);
     npy_intp new_shape[NPY_MAXDIMS], strides[NPY_MAXDIMS];
-    npy_intp stride = PyDataType_ELSIZE(op_dtype);
+    npy_intp stride = op_dtype->elsize;
     NpyIter_AxisData *axisdata;
     npy_intp sizeof_axisdata;
     int i;
@@ -3013,7 +3013,7 @@ npyiter_new_temp_array(NpyIter *iter, PyTypeObject *subtype,
 
         /* Fill in the missing strides in C order */
         factor = 1;
-        itemsize = PyDataType_ELSIZE(op_dtype);
+        itemsize = op_dtype->elsize;
         for (i = op_ndim-1; i >= 0; --i) {
             if (strides[i] == NPY_MAX_INTP) {
                 new_strides[i] = factor * itemsize;
@@ -3328,7 +3328,7 @@ npyiter_allocate_arrays(NpyIter *iter,
             NpyIter_AxisData *axisdata = NIT_AXISDATA(iter);
             npy_intp stride = NAD_STRIDES(axisdata)[iop];
 
-            if (stride != PyDataType_ELSIZE(op_dtype[iop])) {
+            if (stride != op_dtype[iop]->elsize) {
                 /*
                  * Need to copy to buffer (cast) to ensure contiguous
                  * NOTE: This is the wrong place in case of axes reorder
@@ -3450,7 +3450,7 @@ npyiter_allocate_transfer_functions(NpyIter *iter)
                 if (PyArray_GetDTypeTransferFunction(
                                         aligned,
                                         op_stride,
-                                        PyDataType_ELSIZE(op_dtype[iop]),
+                                        op_dtype[iop]->elsize,
                                         PyArray_DESCR(op[iop]),
                                         op_dtype[iop],
                                         move_references,
@@ -3479,10 +3479,10 @@ npyiter_allocate_transfer_functions(NpyIter *iter)
                      */
                     if (PyArray_GetMaskedDTypeTransferFunction(
                             aligned,
-                            PyDataType_ELSIZE(op_dtype[iop]),
+                            op_dtype[iop]->elsize,
                             op_stride,
-                            (strides[maskop] == PyDataType_ELSIZE(mask_dtype)) ?
-                                PyDataType_ELSIZE(mask_dtype) : NPY_MAX_INTP,
+                            (strides[maskop] == mask_dtype->elsize) ?
+                                mask_dtype->elsize : NPY_MAX_INTP,
                             op_dtype[iop],
                             PyArray_DESCR(op[iop]),
                             mask_dtype,
@@ -3496,7 +3496,7 @@ npyiter_allocate_transfer_functions(NpyIter *iter)
                 else {
                     if (PyArray_GetDTypeTransferFunction(
                             aligned,
-                            PyDataType_ELSIZE(op_dtype[iop]),
+                            op_dtype[iop]->elsize,
                             op_stride,
                             op_dtype[iop],
                             PyArray_DESCR(op[iop]),
@@ -3521,7 +3521,7 @@ npyiter_allocate_transfer_functions(NpyIter *iter)
                  */
                 if (PyArray_GetClearFunction(
                         aligned,
-                        PyDataType_ELSIZE(op_dtype[iop]), op_dtype[iop],
+                        op_dtype[iop]->elsize, op_dtype[iop],
                         &transferinfo[iop].clear, &nc_flags) < 0) {
                     goto fail;
                 }

@@ -416,7 +416,7 @@ PyArray_GetField(PyArrayObject *self, PyArray_Descr *typed, int offset)
         Py_DECREF(safe);
     }
     self_elsize = PyArray_ITEMSIZE(self);
-    typed_elsize = PyDataType_ELSIZE(typed);
+    typed_elsize = typed->elsize;
 
     /* check that values are valid */
     if (typed_elsize > self_elsize) {
@@ -1020,7 +1020,7 @@ any_array_ufunc_overrides(PyObject *args, PyObject *kwds)
         return -1;
     }
     for (i = 0; i < nin; ++i) {
-#if defined(PYPY_VERSION) || defined(Py_LIMITED_API)
+#if defined(Py_LIMITED_API)
         PyObject *obj = PyTuple_GetItem(args, i);
         if (obj == NULL) {
             return -1;
@@ -2009,7 +2009,7 @@ array_reduce_ex(PyArrayObject *self, PyObject *args)
         PyDataType_FLAGCHK(descr, NPY_ITEM_HASOBJECT) ||
         (PyType_IsSubtype(((PyObject*)self)->ob_type, &PyArray_Type) &&
          ((PyObject*)self)->ob_type != &PyArray_Type) ||
-        PyDataType_ELSIZE(descr) == 0) {
+        descr->elsize == 0) {
         /* The PickleBuffer class from version 5 of the pickle protocol
          * can only be used for arrays backed by a contiguous data buffer.
          * For all other cases we fallback to the generic array_reduce
@@ -2086,7 +2086,7 @@ array_setstate(PyArrayObject *self, PyObject *args)
      *    copy from the pickled data (may not match allocation currently if 0).
      * Compare with `PyArray_NewFromDescr`, raise MemoryError for simplicity.
      */
-    nbytes = PyDataType_ELSIZE(typecode);
+    nbytes = typecode->elsize;
     for (int i = 0; i < nd; i++) {
         if (dimensions[i] < 0) {
             PyErr_SetString(PyExc_TypeError,
@@ -2196,10 +2196,10 @@ array_setstate(PyArrayObject *self, PyObject *args)
                                         datastr, PyArray_ITEMSIZE(self),
                                         numels, 1, self);
                 if (!(PyArray_ISEXTENDED(self) ||
-                      PyDataType_METADATA(PyArray_DESCR(self)) ||
+                      PyArray_DESCR(self)->metadata ||
                       PyDataType_C_METADATA(PyArray_DESCR(self)))) {
                     fa->descr = PyArray_DescrFromType(
-                            PyDataType_TYPENUM(PyArray_DESCR(self)));
+                                    PyArray_DESCR(self)->type_num);
                 }
                 else {
                     fa->descr = PyArray_DescrNew(typecode);
@@ -2208,11 +2208,11 @@ array_setstate(PyArrayObject *self, PyObject *args)
                         Py_DECREF(rawdata);
                         return NULL;
                     }
-                    if (PyDataType_BYTEORDER(PyArray_DESCR(self)) == NPY_BIG) {
-                        PyDataType_SET_BYTEORDER(PyArray_DESCR(self), NPY_LITTLE);
+                    if (PyArray_DESCR(self)->byteorder == NPY_BIG) {
+                        PyArray_DESCR(self)->byteorder = NPY_LITTLE;
                     }
-                    else if (PyDataType_BYTEORDER(PyArray_DESCR(self)) == NPY_LITTLE) {
-                        PyDataType_SET_BYTEORDER(PyArray_DESCR(self), NPY_BIG);
+                    else if (PyArray_DESCR(self)->byteorder == NPY_LITTLE) {
+                        PyArray_DESCR(self)->byteorder = NPY_BIG;
                     }
                 }
                 Py_DECREF(typecode);
@@ -2366,7 +2366,7 @@ array_transpose(PyArrayObject *self, PyObject *args)
     return ret;
 }
 
-#define _CHKTYPENUM(typ) ((typ) ? PyDataType_TYPENUM(typ) : NPY_NOTYPE)
+#define _CHKTYPENUM(typ) ((typ) ? (typ)->type_num : NPY_NOTYPE)
 
 static PyObject *
 array_mean(PyArrayObject *self,

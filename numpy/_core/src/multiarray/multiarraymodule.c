@@ -478,7 +478,7 @@ PyArray_ConcatenateArrays(int narrays, PyArrayObject **arrays, int axis,
          * resolution rules matching that of the NpyIter.
          */
         PyArray_CreateMultiSortedStridePerm(narrays, arrays, ndim, strideperm);
-        s = PyDataType_ELSIZE(descr);
+        s = descr->elsize;
         for (idim = ndim-1; idim >= 0; --idim) {
             int iperm = strideperm[idim];
             strides[iperm] = s;
@@ -584,7 +584,7 @@ PyArray_ConcatenateFlattenedArrays(int narrays, PyArrayObject **arrays,
             return NULL;
         }
 
-        stride = PyDataType_ELSIZE(descr);
+        stride = descr->elsize;
 
         /* Allocate the array for the result. This steals the 'dtype' reference. */
         ret = (PyArrayObject *)PyArray_NewFromDescr_int(
@@ -761,7 +761,7 @@ _signbit_set(PyArrayObject *arr)
     int elsize;
 
     elsize = PyArray_ITEMSIZE(arr);
-    byteorder = PyDataType_BYTEORDER(PyArray_DESCR(arr));
+    byteorder = PyArray_DESCR(arr)->byteorder;
     ptr = PyArray_DATA(arr);
     if (elsize > 1 &&
         (byteorder == NPY_LITTLE ||
@@ -2137,12 +2137,12 @@ array_scalar(PyObject *NPY_UNUSED(ignored), PyObject *args, PyObject *kwds)
         return NULL;
     }
     if (PyDataType_FLAGCHK(typecode, NPY_LIST_PICKLE)) {
-        if (PyDataType_TYPENUM(typecode) == NPY_OBJECT) {
+        if (typecode->type_num == NPY_OBJECT) {
             PyErr_SetString(PyExc_TypeError,
                     "Cannot unpickle a scalar with object dtype.");
             return NULL;
         }
-        if (PyDataType_TYPENUM(typecode) == NPY_VSTRING) {
+        if (typecode->type_num == NPY_VSTRING) {
             // TODO: if we ever add a StringDType scalar, this might need to change
             PyErr_SetString(PyExc_TypeError,
                             "Cannot unpickle a StringDType scalar");
@@ -2174,14 +2174,14 @@ array_scalar(PyObject *NPY_UNUSED(ignored), PyObject *args, PyObject *kwds)
     }
     else {
         if (obj == NULL) {
-            if (PyDataType_ELSIZE(typecode) == 0) {
-                PyDataType_SET_ELSIZE(typecode, 1);
+            if (typecode->elsize == 0) {
+                typecode->elsize = 1;
             }
-            dptr = PyArray_malloc(PyDataType_ELSIZE(typecode));
+            dptr = PyArray_malloc(typecode->elsize);
             if (dptr == NULL) {
                 return PyErr_NoMemory();
             }
-            memset(dptr, '\0', PyDataType_ELSIZE(typecode));
+            memset(dptr, '\0', typecode->elsize);
             alloc = 1;
         }
         else {
@@ -2204,7 +2204,7 @@ array_scalar(PyObject *NPY_UNUSED(ignored), PyObject *args, PyObject *kwds)
                 Py_XDECREF(tmpobj);
                 return NULL;
             }
-            if (PyBytes_GET_SIZE(obj) < PyDataType_ELSIZE(typecode)) {
+            if (PyBytes_GET_SIZE(obj) < typecode->elsize) {
                 PyErr_SetString(PyExc_ValueError,
                         "initialization string is too small");
                 Py_XDECREF(tmpobj);
@@ -3275,7 +3275,7 @@ PyArray_Where(PyObject *condition, PyObject *x, PyObject *y)
     if (common_dt == NULL) {
         goto fail;
     }
-    npy_intp itemsize = PyDataType_ELSIZE(common_dt);
+    npy_intp itemsize = common_dt->elsize;
 
     // If x and y don't have references, we ask the iterator to create buffers
     // using the common data type of x and y and then do fast trivial copies
@@ -3314,8 +3314,8 @@ PyArray_Where(PyObject *condition, PyObject *x, PyObject *y)
 
     NPY_ARRAYMETHOD_FLAGS transfer_flags = 0;
 
-    npy_intp x_strides[2] = {PyDataType_ELSIZE(x_dt), itemsize};
-    npy_intp y_strides[2] = {PyDataType_ELSIZE(y_dt), itemsize};
+    npy_intp x_strides[2] = {x_dt->elsize, itemsize};
+    npy_intp y_strides[2] = {y_dt->elsize, itemsize};
     npy_intp one = 1;
 
     if (!trivial_copy_loop) {
@@ -3831,7 +3831,7 @@ format_longfloat(PyObject *NPY_UNUSED(dummy), PyObject *args, PyObject *kwds)
  */
 static int _is_user_defined_string_array(PyArrayObject* array)
 {
-    if (NPY_DT_is_user_defined(NPY_DTYPE(PyArray_DESCR(array)))) {
+    if (NPY_DT_is_user_defined(PyArray_DESCR(array))) {
         PyTypeObject* scalar_type = NPY_DTYPE(PyArray_DESCR(array))->scalar_type;
         if (PyType_IsSubtype(scalar_type, &PyBytes_Type) ||
             PyType_IsSubtype(scalar_type, &PyUnicode_Type)) {
@@ -4383,7 +4383,7 @@ _populate_finfo_constants(PyObject *NPY_UNUSED(self), PyObject *args)
         return NULL;
     }
     buffer_data = PyArray_BYTES(buffer_array);
-    npy_intp elsize = PyDataType_ELSIZE(PyArray_DESCR(buffer_array));
+    npy_intp elsize = PyArray_DESCR(buffer_array)->elsize;
 
     for (int i = 0; i < n_finfo_constants; i++)
     {
@@ -4470,7 +4470,6 @@ _blas_supports_fpe(PyObject *NPY_UNUSED(self), PyObject *arg) {
 
 static PyObject *
 _reload_guard(PyObject *NPY_UNUSED(self), PyObject *NPY_UNUSED(args)) {
-#if !defined(PYPY_VERSION)
     if (PyThreadState_Get()->interp != PyInterpreterState_Main()) {
         if (PyErr_WarnEx(PyExc_UserWarning,
                 "NumPy was imported from a Python sub-interpreter but "
@@ -4488,7 +4487,6 @@ _reload_guard(PyObject *NPY_UNUSED(self), PyObject *NPY_UNUSED(args)) {
         npy_global_state.reload_guard_initialized = 1;
         Py_RETURN_NONE;
     }
-#endif
     if (npy_global_state.reload_guard_initialized) {
         if (PyErr_WarnEx(PyExc_UserWarning,
                 "The NumPy module was reloaded (imported a second time). "
@@ -5172,7 +5170,6 @@ _multiarray_umath_exec(PyObject *m) {
     if (PyDataMem_DefaultHandler == NULL) {
         return -1;
     }
-
     /*
      * Initialize the context-local current handler
      * with the default PyDataMem_Handler capsule.
