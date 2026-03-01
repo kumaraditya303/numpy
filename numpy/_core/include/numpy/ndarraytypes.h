@@ -696,6 +696,7 @@ PyDataType_GET_ITEM_DATA(const PyArray_Descr *dtype)
     return (PyArray_Descr_fields *)dtype;
 }
 #else
+NPY_NO_EXPORT
 PyArray_Descr_fields *
 _PyDataType_GET_ITEM_DATA(const PyArray_Descr *dtype);
 #define PyDataType_GET_ITEM_DATA(dtype) _PyDataType_GET_ITEM_DATA((PyArray_Descr *)(dtype))
@@ -714,9 +715,11 @@ static inline int _PyDataType_TYPENUM(const PyArray_Descr *descr)
  * check NPY_DT_is_legacy before casting/accessing).  The struct is also not
  * valid when running on 1.x (i.e. in public API use).
  */
-#if !defined(_Py_OPAQUE_PYOBJECT)
+
 typedef struct {
+#ifndef _Py_OPAQUE_PYOBJECT
         PyObject_HEAD
+#endif
         PyTypeObject *typeobj;
         char kind;
         char type;
@@ -733,9 +736,25 @@ typedef struct {
         PyObject *fields;
         PyObject *names;
         NpyAuxData *c_metadata;
-} _PyArray_LegacyDescr;
+} _PyArray_LegacyDescr_fields;
+
+#ifdef _Py_OPAQUE_PYOBJECT
+typedef struct _PyArray_LegacyDescrTag _PyArray_LegacyDescr;
+NPY_NO_EXPORT
+_PyArray_LegacyDescr_fields* _PyArray_LegacyDescr_GET_ITEM_DATA(const _PyArray_LegacyDescr *dtype);
+#define _PyArray_LegacyDescr_GET_ITEM_DATA(dtype) _PyArray_LegacyDescr_GET_ITEM_DATA((_PyArray_LegacyDescr *)(dtype))
+#else
+typedef _PyArray_LegacyDescr_fields _PyArray_LegacyDescr;
+static inline _PyArray_LegacyDescr_fields *
+_PyArray_LegacyDescr_GET_ITEM_DATA(const _PyArray_LegacyDescr *dtype)
+{
+    return (_PyArray_LegacyDescr_fields *)dtype;
+}
+#define _PyArray_LegacyDescr_GET_ITEM_DATA(dtype) _PyArray_LegacyDescr_GET_ITEM_DATA((_PyArray_LegacyDescr *)(dtype))
+#endif
 
 
+#if !defined(_Py_OPAQUE_PYOBJECT)
 /*
  * Umodified PyArray_Descr struct identical to NumPy 1.x.  This struct is
  * used as a prototype for registering a new legacy DType.
@@ -872,6 +891,7 @@ PyArray_GET_ITEM_DATA(const PyArrayObject *arr)
 }
 #else
 typedef struct tagPyArrayObject PyArrayObject;
+NPY_NO_EXPORT
 PyArrayObject_fields *
 _PyArray_GET_ITEM_DATA(const PyArrayObject *arr);
 #define PyArray_GET_ITEM_DATA(arr) _PyArray_GET_ITEM_DATA((PyArrayObject *)(arr))
@@ -1267,7 +1287,7 @@ PyArrayIterObject_fields *_PyArrayIter_GET_ITEM_DATA(const PyArrayIterObject *it
 /* Iterator API */
 #define PyArrayIter_Check(op) PyObject_TypeCheck((op), &PyArrayIter_Type)
 
-#define _PyAIT(it) ((PyArrayIterObject *)(it))
+#define _PyAIT(it) PyArrayIter_GET_ITEM_DATA(it)
 #define PyArray_ITER_RESET(it) do { \
         _PyAIT(it)->index = 0; \
         _PyAIT(it)->dataptr = PyArray_BYTES(_PyAIT(it)->ao); \
@@ -1414,6 +1434,7 @@ static inline PyArrayMultiIterObject_fields *PyArrayMultiIter_GET_ITEM_DATA(cons
 }
 #else
 typedef struct PyArrayMultiIterObject_tag PyArrayMultiIterObject;
+NPY_NO_EXPORT
 PyArrayMultiIterObject_fields *_PyArrayMultiIter_GET_ITEM_DATA(const PyArrayMultiIterObject *multi);
 #define PyArrayMultiIter_GET_ITEM_DATA(multi) _PyArrayMultiIter_GET_ITEM_DATA((PyArrayMultiIterObject *)(multi))
 #endif
@@ -1563,6 +1584,7 @@ static inline PyArrayNeighborhoodIterObject_fields *PyArrayNeighborhoodIter_GET_
 }
 #else
 typedef struct PyArrayNeighborhoodIterObject_tag PyArrayNeighborhoodIterObject;
+NPY_NO_EXPORT
 PyArrayNeighborhoodIterObject_fields *_PyArrayNeighborhoodIter_GET_ITEM_DATA(const PyArrayNeighborhoodIterObject *iter);
 #define PyArrayNeighborhoodIter_GET_ITEM_DATA(iter) _PyArrayNeighborhoodIter_GET_ITEM_DATA((PyArrayNeighborhoodIterObject *)(iter))
 #endif
@@ -1624,61 +1646,61 @@ PyArray_NDIM(const PyArrayObject *arr)
 static inline void *
 PyArray_DATA(const PyArrayObject *arr)
 {
-    return ((PyArrayObject_fields *)arr)->data;
+    return PyArray_GET_ITEM_DATA(arr)->data;
 }
 
 static inline char *
 PyArray_BYTES(const PyArrayObject *arr)
 {
-    return ((PyArrayObject_fields *)arr)->data;
+    return PyArray_GET_ITEM_DATA(arr)->data;
 }
 
 static inline npy_intp *
 PyArray_DIMS(const PyArrayObject *arr)
 {
-    return ((PyArrayObject_fields *)arr)->dimensions;
+    return PyArray_GET_ITEM_DATA(arr)->dimensions;
 }
 
 static inline npy_intp *
 PyArray_STRIDES(const PyArrayObject *arr)
 {
-    return ((PyArrayObject_fields *)arr)->strides;
+    return PyArray_GET_ITEM_DATA(arr)->strides;
 }
 
 static inline npy_intp
 PyArray_DIM(const PyArrayObject *arr, int idim)
 {
-    return ((PyArrayObject_fields *)arr)->dimensions[idim];
+    return PyArray_GET_ITEM_DATA(arr)->dimensions[idim];
 }
 
 static inline npy_intp
 PyArray_STRIDE(const PyArrayObject *arr, int istride)
 {
-    return ((PyArrayObject_fields *)arr)->strides[istride];
+    return PyArray_GET_ITEM_DATA(arr)->strides[istride];
 }
 
 static inline NPY_RETURNS_BORROWED_REF PyObject *
 PyArray_BASE(const PyArrayObject *arr)
 {
-    return ((PyArrayObject_fields *)arr)->base;
+    return PyArray_GET_ITEM_DATA(arr)->base;
 }
 
 static inline NPY_RETURNS_BORROWED_REF PyArray_Descr *
 PyArray_DESCR(const PyArrayObject *arr)
 {
-    return ((PyArrayObject_fields *)arr)->descr;
+    return PyArray_GET_ITEM_DATA(arr)->descr;
 }
 
 static inline int
 PyArray_FLAGS(const PyArrayObject *arr)
 {
-    return ((PyArrayObject_fields *)arr)->flags;
+    return PyArray_GET_ITEM_DATA(arr)->flags;
 }
 
 static inline int
 PyArray_TYPE(const PyArrayObject *arr)
 {
-    return PyDataType_TYPENUM(((PyArrayObject_fields *)arr)->descr);
+    return PyDataType_TYPENUM(PyArray_GET_ITEM_DATA(arr)->descr);
 }
 
 static inline int

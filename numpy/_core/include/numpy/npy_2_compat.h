@@ -183,25 +183,14 @@ PyDataType_SET_BYTEORDER(PyArray_Descr *dtype, char byteorder)
         dtype->flags = (unsigned char)flags;  /* Need unsigned cast on 1.x */
 #endif
     }
-    #ifdef _Py_OPAQUE_PYOBJECT
     #define DESCR_ACCESSOR(FIELD, field, type, legacy_only)    \
         static inline type                                     \
         PyDataType_##FIELD(const PyArray_Descr *dtype) {       \
             if (legacy_only && !PyDataType_ISLEGACY(dtype)) {  \
                 return (type)0;                                \
             }                                                  \
-            return PyDataType_GET_ITEM_DATA(dtype)->field;     \
+            return _PyArray_LegacyDescr_GET_ITEM_DATA(dtype)->field;     \
         }
-    #else
-    #define DESCR_ACCESSOR(FIELD, field, type, legacy_only)    \
-        static inline type                                     \
-        PyDataType_##FIELD(const PyArray_Descr *dtype) {       \
-            if (legacy_only && !PyDataType_ISLEGACY(dtype)) {  \
-                return (type)0;                                \
-            }                                                  \
-            return ((_PyArray_LegacyDescr *)dtype)->field;     \
-        }
-    #endif
 #    else /* compiling for both 1.x and 2.x */
 
     static inline void
@@ -255,13 +244,11 @@ PyDataType_SET_BYTEORDER(PyArray_Descr *dtype, char byteorder)
 
 DESCR_ACCESSOR(ELSIZE, elsize, npy_intp, 0)
 DESCR_ACCESSOR(ALIGNMENT, alignment, npy_intp, 0)
-#ifndef _Py_OPAQUE_PYOBJECT
 DESCR_ACCESSOR(METADATA, metadata, PyObject *, 1)
 DESCR_ACCESSOR(SUBARRAY, subarray, PyArray_ArrayDescr *, 1)
 DESCR_ACCESSOR(NAMES, names, PyObject *, 1)
 DESCR_ACCESSOR(FIELDS, fields, PyObject *, 1)
 DESCR_ACCESSOR(C_METADATA, c_metadata, NpyAuxData *, 1)
-#endif
 DESCR_ACCESSOR(TYPE, type, char, 0)
 DESCR_ACCESSOR(KIND, kind, char, 0)
 DESCR_ACCESSOR(BYTEORDER, byteorder, char, 0)

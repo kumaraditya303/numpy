@@ -156,7 +156,7 @@ extern "C" {
 static inline void
 PyArray_DiscardWritebackIfCopy(PyArrayObject *arr)
 {
-    PyArrayObject_fields *fa = (PyArrayObject_fields *)arr;
+    PyArrayObject_fields *fa = PyArray_GET_ITEM_DATA(arr);
     if (fa && fa->base) {
         if (fa->flags & NPY_ARRAY_WRITEBACKIFCOPY) {
             PyArray_ENABLEFLAGS((PyArrayObject*)fa->base, NPY_ARRAY_WRITEABLE);
@@ -239,7 +239,7 @@ NPY_TITLE_KEY_check(PyObject *key, PyObject *value)
 static inline npy_intp
 PyArray_ITEMSIZE(const PyArrayObject *arr)
 {
-    return PyDataType_ELSIZE(((PyArrayObject_fields *)arr)->descr);
+    return PyDataType_ELSIZE(PyArray_GET_ITEM_DATA(arr)->descr);
 }
 
 #define PyDataType_HASFIELDS(obj) (PyDataType_ISLEGACY((PyArray_Descr*)(obj)) && PyDataType_NAMES((PyArray_Descr*)(obj)) != NULL)
@@ -270,7 +270,7 @@ PyArray_ITEMSIZE(const PyArrayObject *arr)
 static inline PyObject *
 PyArray_GETITEM(const PyArrayObject *arr, const char *itemptr)
 {
-    return PyDataType_GetArrFuncs(((PyArrayObject_fields *)arr)->descr)->getitem(
+    return PyDataType_GetArrFuncs(PyArray_GET_ITEM_DATA(arr)->descr)->getitem(
                                         (void *)itemptr, (PyArrayObject *)arr);
 }
 
@@ -282,7 +282,7 @@ PyArray_GETITEM(const PyArrayObject *arr, const char *itemptr)
 static inline int
 PyArray_SETITEM(PyArrayObject *arr, char *itemptr, PyObject *v)
 {
-    return PyDataType_GetArrFuncs(((PyArrayObject_fields *)arr)->descr)->setitem(v, itemptr, arr);
+    return PyDataType_GetArrFuncs(PyArray_GET_ITEM_DATA(arr)->descr)->setitem(v, itemptr, arr);
 }
 #endif  /* not internal */
 

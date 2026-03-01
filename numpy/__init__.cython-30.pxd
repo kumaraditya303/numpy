@@ -226,7 +226,7 @@ cdef extern from "numpy/arrayobject.h":
     ctypedef struct PyArray_Descr:
         pass
 
-    ctypedef class numpy.dtype [object PyArray_Descr_fields, check_size ignore]:
+    ctypedef class numpy.dtype [object PyArray_Descr, check_size ignore]:
         @property
         cdef inline PyTypeObject* typeobj(self) noexcept nogil:
             return PyDataType_TYPEOBJ(self)
@@ -238,7 +238,7 @@ cdef extern from "numpy/arrayobject.h":
         @property
         cdef inline char type(self) noexcept nogil:
             return PyDataType_TYPE(self)
-        
+
         # Numpy sometimes mutates this without warning (e.g. it'll
         # sometimes change "|" to "<" in shared dtype objects on
         # little-endian machines). If this matters to you, use
@@ -922,20 +922,11 @@ cdef extern from "numpy/ufuncobject.h":
 
     ctypedef void (*PyUFuncGenericFunction) (char **, npy_intp *, npy_intp *, void *)
 
+    ctypedef struct PyUFuncObject:
+        pass
     ctypedef class numpy.ufunc [object PyUFuncObject, check_size ignore]:
-        cdef:
-            int nin, nout, nargs
-            int identity
-            PyUFuncGenericFunction *functions
-            void **data
-            int ntypes
-            int check_return
-            char *name
-            char *types
-            char *doc
-            void *ptr
-            PyObject *obj
-            PyObject *userloops
+        pass
+
 
     cdef enum:
         PyUFunc_Zero
