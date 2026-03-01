@@ -253,8 +253,8 @@ PyArray_ITEMSIZE(const PyArrayObject *arr)
 
 #define PyDataType_HASFIELDS(obj) (PyDataType_ISLEGACY((PyArray_Descr*)(obj)) && PyDataType_NAMES((PyArray_Descr*)(obj)) != NULL)
 #define PyDataType_HASSUBARRAY(dtype) (PyDataType_ISLEGACY((PyArray_Descr*)dtype) && PyDataType_SUBARRAY((PyArray_Descr*)dtype) != NULL)
-#define PyDataType_ISUNSIZED(dtype) (PyDataType_ELSIZE(dtype) == 0 &&        \
-                                      !PyDataType_HASFIELDS(dtype))
+#define PyDataType_ISUNSIZED(dtype) (PyDataType_ELSIZE((PyArray_Descr*)dtype) == 0 &&        \
+                                      !PyDataType_HASFIELDS((PyArray_Descr*)dtype))
 
 #define PyDataType_FLAGCHK(dtype, flag) \
         ((PyDataType_FLAGS(dtype) & (flag)) == (flag))

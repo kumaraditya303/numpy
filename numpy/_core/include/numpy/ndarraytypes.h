@@ -1616,10 +1616,12 @@ PyArray_FLAGS(const PyArrayObject *arr)
 }
 
 // defined here to avoid a forward-declaration
-static inline int PyDataType_TYPENUM(const PyArray_Descr *descr)
+static inline int _PyDataType_TYPENUM(const PyArray_Descr *descr)
 {
     return ((PyArray_Descr_fields *)descr)->type_num;
 }
+
+#define PyDataType_TYPENUM(descr) _PyDataType_TYPENUM((PyArray_Descr *)(descr))
 
 static inline int
 PyArray_TYPE(const PyArrayObject *arr)
