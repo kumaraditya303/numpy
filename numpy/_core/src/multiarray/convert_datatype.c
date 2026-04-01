@@ -137,41 +137,37 @@ create_casting_impl(PyArray_DTypeMeta *from, PyArray_DTypeMeta *to)
 static PyObject *
 ensure_castingimpl_exists(PyArray_DTypeMeta *from, PyArray_DTypeMeta *to)
 {
-    int return_error = 0;
     PyObject *res = NULL;
+    Py_BEGIN_CRITICAL_SECTION_MUTEX(&NPY_DT_SLOTS(from)->castingimpls->mutex);
 
-    /* Need to create the cast. This might happen at runtime so we enter a
-       critical section to avoid races */
+    res = PyArrayIdentityHash_GetItem(
+            NPY_DT_SLOTS(from)->castingimpls, (PyObject *const *)&to);
+    if (res != NULL) {
+        goto done;
+    }
 
-    Py_BEGIN_CRITICAL_SECTION(NPY_DT_SLOTS(from)->castingimpls);
+    /* Need to create the cast. */
+    res = create_casting_impl(from, to);
+    if (res == NULL) {
+        goto done;
+    }
 
-    /* check if another thread filled it while this thread was blocked on
-       acquiring the critical section */
-    if (PyDict_GetItemRef(NPY_DT_SLOTS(from)->castingimpls, (PyObject *)to,
-                          &res) < 0) {
-        return_error = 1;
+    PyObject *existing = NULL;
+    // use the lock-held variant as the critical section is held for the entire function
+    if (PyArrayIdentityHash_SetItemDefaultLockHeld(NPY_DT_SLOTS(from)->castingimpls,
+            (PyObject *const *)&to, res, &existing) < 0) {
+        Py_DECREF(res);
+        goto done;
     }
-    else if (res == NULL) {
-        res = create_casting_impl(from, to);
-        if (res == NULL) {
-            return_error = 1;
-        }
-        else if (PyDict_SetItem(NPY_DT_SLOTS(from)->castingimpls,
-                                (PyObject *)to, res) < 0) {
-            return_error = 1;
-        }
-    }
-    Py_END_CRITICAL_SECTION();
-    if (return_error) {
-        Py_XDECREF(res);
-        return NULL;
-    }
+    assert(existing == res);
+
     if (from == to && res == Py_None) {
         PyErr_Format(PyExc_RuntimeError,
                 "Internal NumPy error, within-DType cast missing for %S!", from);
-        Py_DECREF(res);
-        return NULL;
+        goto done;
     }
+done:
+    Py_END_CRITICAL_SECTION();
     return res;
 }
 
@@ -181,8 +177,8 @@ ensure_castingimpl_exists(PyArray_DTypeMeta *from, PyArray_DTypeMeta *to)
  * @param from The implementation to cast from
  * @param to The implementation to cast to
  *
- * @returns A castingimpl (PyArrayDTypeMethod *), None or NULL with an
- *          error set.
+ * @returns A borrowed reference to a castingimpl (PyArrayDTypeMethod *),
+ *          Py_None, or NULL with an error set.
  */
 NPY_NO_EXPORT PyObject *
 PyArray_GetCastingImpl(PyArray_DTypeMeta *from, PyArray_DTypeMeta *to)
@@ -190,13 +186,12 @@ PyArray_GetCastingImpl(PyArray_DTypeMeta *from, PyArray_DTypeMeta *to)
     PyObject *res = NULL;
     if (from == to) {
         if ((NPY_DT_SLOTS(from)->within_dtype_castingimpl) != NULL) {
-            res = Py_XNewRef(
-                    (PyObject *)NPY_DT_SLOTS(from)->within_dtype_castingimpl);
+            res = (PyObject *)NPY_DT_SLOTS(from)->within_dtype_castingimpl;
         }
     }
-    else if (PyDict_GetItemRef(NPY_DT_SLOTS(from)->castingimpls,
-                               (PyObject *)to, &res) < 0) {
-        return NULL;
+    else {
+        res = PyArrayIdentityHash_GetItem(
+                NPY_DT_SLOTS(from)->castingimpls, (PyObject *const *)&to);
     }
     if (res != NULL) {
         return res;
@@ -228,7 +223,7 @@ PyArray_GetBoundCastingImpl(PyArray_DTypeMeta *from, PyArray_DTypeMeta *to)
     if (res == NULL) {
         return NULL;
     }
-    res->method = (PyArrayMethodObject *)method;
+    res->method = (PyArrayMethodObject *)Py_NewRef(method);
     res->dtypes = PyMem_Malloc(2 * sizeof(PyArray_DTypeMeta *));
     if (res->dtypes == NULL) {
         Py_DECREF(res);
@@ -480,7 +475,6 @@ PyArray_GetCastInfo(
         return -1;
     }
     if (meth == Py_None) {
-        Py_DECREF(Py_None);
         return -1;
     }
 
@@ -488,7 +482,6 @@ PyArray_GetCastInfo(
     PyArray_DTypeMeta *dtypes[2] = {NPY_DTYPE(from), to_dtype};
     NPY_CASTING casting = _get_cast_safety_from_castingimpl(castingimpl,
             dtypes, from, to, view_offset);
-    Py_DECREF(meth);
 
     return casting;
 }
@@ -527,14 +520,12 @@ PyArray_CheckCastSafety(NPY_CASTING casting,
         return -1;
     }
     if (meth == Py_None) {
-        Py_DECREF(Py_None);
         return -1;
     }
     PyArrayMethodObject *castingimpl = (PyArrayMethodObject *)meth;
 
     if (PyArray_MinCastSafety(castingimpl->casting, casting) == casting) {
         /* No need to check using `castingimpl.resolve_descriptors()` */
-        Py_DECREF(meth);
         return 1;
     }
 
@@ -542,7 +533,6 @@ PyArray_CheckCastSafety(NPY_CASTING casting,
     npy_intp view_offset;
     NPY_CASTING safety = _get_cast_safety_from_castingimpl(castingimpl,
             dtypes, from, to, &view_offset);
-    Py_DECREF(meth);
     /* If casting is the smaller (or equal) safety we match */
     if (safety < 0) {
         return -1;
@@ -594,12 +584,10 @@ PyArray_CanCastSafely(int fromtype, int totype)
         return 0;
     }
     else if (castingimpl == Py_None) {
-        Py_DECREF(Py_None);
         return 0;
     }
     NPY_CASTING safety = ((PyArrayMethodObject *)castingimpl)->casting;
     int res = PyArray_MinCastSafety(safety, NPY_SAFE_CASTING) == NPY_SAFE_CASTING;
-    Py_DECREF(castingimpl);
     return res;
 }
 
@@ -944,7 +932,6 @@ PyArray_CastDescrToDType(PyArray_Descr *descr, PyArray_DTypeMeta *given_DType)
 
     PyObject *tmp = PyArray_GetCastingImpl(NPY_DTYPE(descr), given_DType);
     if (tmp == NULL || tmp == Py_None) {
-        Py_XDECREF(tmp);
         goto error;
     }
     PyArray_DTypeMeta *dtypes[2] = {NPY_DTYPE(descr), given_DType};
@@ -955,7 +942,6 @@ PyArray_CastDescrToDType(PyArray_Descr *descr, PyArray_DTypeMeta *given_DType)
     npy_intp view_offset = NPY_MIN_INTP;
     NPY_CASTING casting = meth->resolve_descriptors(
             meth, dtypes, given_descrs, loop_descrs, &view_offset);
-    Py_DECREF(tmp);
     if (casting < 0) {
         goto error;
     }
@@ -2056,15 +2042,19 @@ PyArray_AddCastingImplementation(PyBoundArrayMethodObject *meth)
 
         return 0;
     }
-    if (PyDict_Contains(NPY_DT_SLOTS(meth->dtypes[0])->castingimpls,
-            (PyObject *)meth->dtypes[1])) {
+    PyObject *existing;
+    Py_INCREF(meth->method);
+    if (PyArrayIdentityHash_SetItemDefault(
+            NPY_DT_SLOTS(meth->dtypes[0])->castingimpls,
+            (PyObject *const *)&meth->dtypes[1],
+            (PyObject *)meth->method, &existing) < 0) {
+        Py_DECREF(meth->method);
+        return -1;
+    }
+    if (existing != (PyObject *)meth->method) {
         PyErr_Format(PyExc_RuntimeError,
                 "A cast was already added for %S -> %S. (method: %s)",
                 meth->dtypes[0], meth->dtypes[1], meth->method->name);
-        return -1;
-    }
-    if (PyDict_SetItem(NPY_DT_SLOTS(meth->dtypes[0])->castingimpls,
-            (PyObject *)meth->dtypes[1], (PyObject *)meth->method) < 0) {
         return -1;
     }
     return 0;

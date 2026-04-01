@@ -25,6 +25,9 @@ typedef struct {
 NPY_NO_EXPORT int
 PyArrayIdentityHash_SetItemDefault(PyArrayIdentityHash *tb,
         PyObject *const *key, PyObject *default_value, PyObject **result);
+NPY_NO_EXPORT int
+PyArrayIdentityHash_SetItemDefaultLockHeld(PyArrayIdentityHash *tb,
+        PyObject *const *key, PyObject *default_value, PyObject **result);
 
 NPY_NO_EXPORT PyObject *
 PyArrayIdentityHash_GetItem(PyArrayIdentityHash *tb, PyObject *const *key);
@@ -34,6 +37,9 @@ PyArrayIdentityHash_New(int key_len);
 
 NPY_NO_EXPORT void
 PyArrayIdentityHash_Dealloc(PyArrayIdentityHash *tb);
+
+NPY_NO_EXPORT int
+PyArrayIdentityHash_Next(PyArrayIdentityHash *tb, npy_intp *pos, PyObject **value, PyObject **keys);
 
 #ifdef __cplusplus
 }

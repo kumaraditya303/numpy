@@ -28,6 +28,7 @@
 #include "dtype_traversal.h"
 #include "npy_static_data.h"
 #include "multiarraymodule.h"
+#include "npy_hashtable.h"
 
 #include <assert.h>
 
@@ -40,7 +41,16 @@ dtypemeta_dealloc(PyArray_DTypeMeta *self) {
 
     Py_XDECREF(self->scalar_type);
     Py_XDECREF(self->singleton);
-    Py_XDECREF(NPY_DT_SLOTS(self)->castingimpls);
+    PyArrayIdentityHash *castingimpls = NPY_DT_SLOTS(self)->castingimpls;
+    if (castingimpls != NULL) {
+        npy_intp pos = 0;
+        PyObject *value;
+        PyObject *key;
+        while (PyArrayIdentityHash_Next(castingimpls, &pos, &value, &key)) {
+            Py_XDECREF(value);
+        }
+        PyArrayIdentityHash_Dealloc(castingimpls);
+    }
     PyMem_Free(self->dt_slots);
     PyType_Type.tp_dealloc((PyObject *) self);
 }
@@ -343,8 +353,8 @@ dtypemeta_initialize_struct_from_spec(
         return -1;
     }
 
-    /* Ensure cast dict is defined (not sure we have to do it here) */
-    NPY_DT_SLOTS(DType)->castingimpls = PyDict_New();
+    /* Ensure cast table is defined (not sure we have to do it here) */
+    NPY_DT_SLOTS(DType)->castingimpls = PyArrayIdentityHash_New(1);
     if (NPY_DT_SLOTS(DType)->castingimpls == NULL) {
         return -1;
     }
@@ -1165,7 +1175,7 @@ dtypemeta_wrap_legacy_descriptor(
         Py_DECREF(dtype_class);
         return NULL;
     }
-    dt_slots->castingimpls = PyDict_New();
+    dt_slots->castingimpls = PyArrayIdentityHash_New(1);
     if (dt_slots->castingimpls == NULL) {
         Py_DECREF(dtype_class);
         return NULL;

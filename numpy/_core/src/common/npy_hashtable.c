@@ -255,7 +255,7 @@ _resize_if_necessary(PyArrayIdentityHash *tb)
  *        newly added value.
  * @returns 0 on success, -1 with a MemoryError set on failure.
  */
-static inline int
+int
 PyArrayIdentityHash_SetItemDefaultLockHeld(PyArrayIdentityHash *tb,
         PyObject *const *key, PyObject *default_value, PyObject **result)
 {
@@ -284,14 +284,11 @@ NPY_NO_EXPORT int
 PyArrayIdentityHash_SetItemDefault(PyArrayIdentityHash *tb,
         PyObject *const *key, PyObject *default_value, PyObject **result)
 {
-#ifdef Py_GIL_DISABLED
-    PyMutex_Lock(&tb->mutex);
-#endif
-    int ret = PyArrayIdentityHash_SetItemDefaultLockHeld(tb, key, default_value, result);
-#ifdef Py_GIL_DISABLED
-    PyMutex_Unlock(&tb->mutex);
-#endif
-    return ret;
+    int res = 0;
+    Py_BEGIN_CRITICAL_SECTION_MUTEX(&tb->mutex);
+    res = PyArrayIdentityHash_SetItemDefaultLockHeld(tb, key, default_value, result);
+    Py_END_CRITICAL_SECTION();
+    return res;
 }
 
 
@@ -301,4 +298,26 @@ PyArrayIdentityHash_GetItem(PyArrayIdentityHash *tb, PyObject *const *key)
     PyObject *value = NULL;
     find_item(tb, key, &value);
     return value;
+}
+
+
+NPY_NO_EXPORT int
+PyArrayIdentityHash_Next(PyArrayIdentityHash *tb,
+        npy_intp *pos, PyObject **value, PyObject *keys[])
+{
+    struct buckets *buckets = FT_ATOMIC_LOAD_PTR_ACQUIRE(tb->buckets);
+    int key_len = tb->key_len;
+    npy_intp i = *pos;
+    while (i < buckets->size) {
+        PyObject **item = &(buckets->array[i * (key_len + 1)]);
+        PyObject *val = FT_ATOMIC_LOAD_PTR_ACQUIRE(item[0]);
+        if (val != NULL) {
+            *value = val;
+            memcpy(keys, item + 1, key_len * sizeof(PyObject *));
+            *pos = i + 1;
+            return 1;
+        }
+        i++;
+    }
+    return 0;
 }

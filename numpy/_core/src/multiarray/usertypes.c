@@ -345,13 +345,11 @@ static int _warn_if_cast_exists_already(
     if (to_DType == NULL) {
         return -1;
     }
-    PyObject *cast_impl = PyDict_GetItemWithError( // noqa: borrowed-ref OK
-            NPY_DT_SLOTS(NPY_DTYPE(descr))->castingimpls, (PyObject *)to_DType);
+    PyObject *cast_impl = PyArrayIdentityHash_GetItem(
+            NPY_DT_SLOTS(NPY_DTYPE(descr))->castingimpls,
+            (PyObject *const *)&to_DType);
     Py_DECREF(to_DType);
     if (cast_impl == NULL) {
-        if (PyErr_Occurred()) {
-            return -1;
-        }
     }
     else {
         char *extra_msg;
@@ -361,7 +359,6 @@ static int _warn_if_cast_exists_already(
         else {
             extra_msg = "the previous definition will continue to be used.";
         }
-        Py_DECREF(cast_impl);
         PyArray_Descr *to_descr = PyArray_DescrFromType(totype);
         int ret = PyErr_WarnFormat(PyExc_RuntimeWarning, 1,
                 "A cast from %R to %R was registered/modified using `%s` "

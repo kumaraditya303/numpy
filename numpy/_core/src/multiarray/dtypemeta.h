@@ -6,6 +6,7 @@
 
 #include "array_method.h"
 #include "dtype_traversal.h"
+#include "npy_hashtable.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -82,7 +83,7 @@ typedef struct {
      * (structured and object are exceptions).
      * This should potentially become a weak mapping in the future.
      */
-    PyObject *castingimpls;
+    PyArrayIdentityHash *castingimpls;
 
     /*
      * Storage for `descr->f`, since we may need to allow some customization

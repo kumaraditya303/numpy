@@ -2835,7 +2835,6 @@ init_cast_info(
         return -1;
     }
     if (meth == Py_None) {
-        Py_DECREF(Py_None);
         PyErr_Format(PyExc_TypeError,
                 "Cannot cast data from %S to %S.", src_dtype, dst_dtype);
         return -1;
@@ -2845,7 +2844,7 @@ init_cast_info(
     cast_info->auxdata = NULL;
 
     cast_info->context.caller = NULL;
-    cast_info->context.method = (PyArrayMethodObject *)meth;
+    cast_info->context.method = (PyArrayMethodObject *)Py_NewRef(meth);
 
     PyArray_DTypeMeta *dtypes[2] = {NPY_DTYPE(src_dtype), NPY_DTYPE(dst_dtype)};
     PyArray_Descr *in_descr[2] = {src_dtype, dst_dtype};

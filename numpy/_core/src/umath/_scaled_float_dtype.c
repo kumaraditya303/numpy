@@ -1088,7 +1088,7 @@ get_sfloat_dtype(PyObject *NPY_UNUSED(mod), PyObject *NPY_UNUSED(args))
     if (PyType_Ready((PyTypeObject *)&PyArray_SFloatDType) < 0) {
         return NULL;
     }
-    NPY_DT_SLOTS(&PyArray_SFloatDType)->castingimpls = PyDict_New();
+    NPY_DT_SLOTS(&PyArray_SFloatDType)->castingimpls = PyArrayIdentityHash_New(1);
     if (NPY_DT_SLOTS(&PyArray_SFloatDType)->castingimpls == NULL) {
         return NULL;
     }
