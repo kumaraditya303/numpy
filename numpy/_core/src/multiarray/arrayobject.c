@@ -220,6 +220,21 @@ PyArray_SetBaseObject(PyArrayObject *arr, PyObject *obj)
 
     ((PyArrayObject_fields *)arr)->base = obj;
 
+    /*
+     * if NPY_ARRAY_FREEZE_ON_VIEW is set and this is the first view of the
+     * base array then make the array read only. When the last view is deleted the
+     * array will be made writeable again.
+     */
+    if (PyArray_Check(obj) &&
+            (PyArray_FLAGS((PyArrayObject *)obj) & NPY_ARRAY_FREEZE_ON_VIEW)) {
+        PyArray_CLEARFLAGS(arr, NPY_ARRAY_WRITEABLE);
+        PyArrayObject_fields *base = (PyArrayObject_fields *)obj;
+        base->_view_count++;
+        if (base->_view_count == 1) {
+            PyArray_CLEARFLAGS((PyArrayObject *)base, NPY_ARRAY_WRITEABLE);
+        }
+    }
+
     return 0;
 }
 
@@ -414,6 +429,19 @@ _clear_array_attributes(PyArrayObject *self, npy_bool unraisable)
             }
         }
         /*
+         */
+        if (!(fa->flags & NPY_ARRAY_WRITEBACKIFCOPY) &&
+                PyArray_Check(fa->base) &&
+                (PyArray_FLAGS((PyArrayObject *)fa->base)
+                    & NPY_ARRAY_FREEZE_ON_VIEW)) {
+            PyArrayObject_fields *base_fa = (PyArrayObject_fields *)fa->base;
+            base_fa->_view_count--;
+            if (base_fa->_view_count == 0) {
+                PyArray_ENABLEFLAGS((PyArrayObject *)fa->base,
+                                    NPY_ARRAY_WRITEABLE);
+            }
+        }
+        /*
          * If fa->base is non-NULL, it is something
          * to DECREF -- either a view or a buffer object
          */
@@ -588,6 +616,10 @@ NPY_NO_EXPORT int
 PyArray_FailUnlessWriteable(PyArrayObject *obj, const char *name)
 {
     if (!PyArray_ISWRITEABLE(obj)) {
+        if (PyArray_CHKFLAGS(obj, NPY_ARRAY_FREEZE_ON_VIEW)) {
+            PyErr_Format(PyExc_ValueError, "%s is frozen because of active views", name);
+            return -1;
+        }
         PyErr_Format(PyExc_ValueError, "%s is read-only", name);
         return -1;
     }

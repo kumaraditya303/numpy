@@ -37,6 +37,12 @@ clear_array_attributes(PyArrayObject *self);
  */
 static const int NPY_ARRAY_WARN_ON_WRITE = (1 << 31);
 
+/*
+ * This flag is used to mark arrays which should become read-only when
+ * views are created.
+ */
+static const int NPY_ARRAY_FREEZE_ON_VIEW = (1 << 25);
+
 
 /*
  * These flags are used internally to indicate an array that was previously
