@@ -688,6 +688,7 @@ PyArray_NewFromDescr_int(
     fa->dimensions = NULL;
     fa->data = NULL;
     fa->mem_handler = NULL;
+    fa->_view_count = 0;
 
     if (data == NULL) {
         fa->flags = NPY_ARRAY_DEFAULT;

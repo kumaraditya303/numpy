@@ -389,6 +389,40 @@ arrayflags_warn_on_write_set(
     return 0;
 }
 
+static PyObject *
+arrayflags_freeze_on_view_get(
+        PyArrayFlagsObject *self, void *NPY_UNUSED(ignored))
+{
+    return PyBool_FromLong((self->flags & NPY_ARRAY_FREEZE_ON_VIEW) != 0);
+}
+
+static int
+arrayflags_freeze_on_view_set(
+        PyArrayFlagsObject *self, PyObject *obj, void *NPY_UNUSED(ignored))
+{
+    if (obj == NULL) {
+        PyErr_SetString(PyExc_AttributeError,
+                "Cannot delete flags freeze_on_view attribute");
+        return -1;
+    }
+    if (self->arr == NULL) {
+        PyErr_SetString(PyExc_ValueError,
+                "Cannot set flags on array scalars.");
+        return -1;
+    }
+
+    int istrue = PyObject_IsTrue(obj);
+    if (istrue == -1) {
+        return -1;
+    }
+    if (istrue) {
+        PyArray_ENABLEFLAGS((PyArrayObject *)self->arr,
+                            NPY_ARRAY_FREEZE_ON_VIEW);
+        self->flags |= NPY_ARRAY_FREEZE_ON_VIEW;
+    }
+    return 0;
+}
+
 static PyGetSetDef arrayflags_getsets[] = {
     {"contiguous",
         (getter)arrayflags_contiguous_get,
@@ -429,6 +463,10 @@ static PyGetSetDef arrayflags_getsets[] = {
     {"_warn_on_write",
         (getter)NULL,
         (setter)arrayflags_warn_on_write_set,
+        NULL, NULL},
+    {"freeze_on_view",
+        (getter)arrayflags_freeze_on_view_get,
+        (setter)arrayflags_freeze_on_view_set,
         NULL, NULL},
     {"fnc",
         (getter)arrayflags_fnc_get,
@@ -565,6 +603,11 @@ arrayflags_getitem(PyArrayFlagsObject *self, PyObject *ind)
             return arrayflags_fortran_get(self, NULL);
         }
         break;
+    case 14:
+        if (strncmp(key, "FREEZE_ON_VIEW", n) == 0) {
+            return arrayflags_freeze_on_view_get(self, NULL);
+        }
+        break;
     case 15:
         if (strncmp(key, "WRITEBACKIFCOPY", n) == 0) {
             return arrayflags_writebackifcopy_get(self, NULL);
@@ -615,6 +658,9 @@ arrayflags_setitem(PyArrayFlagsObject *self, PyObject *ind, PyObject *item)
              ((n==1) && (strncmp(key, "X", n) == 0))) {
         return arrayflags_writebackifcopy_set(self, item, NULL);
     }
+    else if ((n==14) && (strncmp(key, "FREEZE_ON_VIEW", n) == 0)) {
+        return arrayflags_freeze_on_view_set(self, item, NULL);
+    }
 
  fail:
     PyErr_SetString(PyExc_KeyError, "Unknown flag");
@@ -637,21 +683,26 @@ arrayflags_print(PyArrayFlagsObject *self)
 {
     int fl = self->flags;
     const char *_warn_on_write = "";
+    const char *_freeze_on_view = "";
 
     if (fl & NPY_ARRAY_WARN_ON_WRITE) {
         _warn_on_write = "  (with WARN_ON_WRITE=True)";
     }
+    if (fl & NPY_ARRAY_FREEZE_ON_VIEW) {
+        _freeze_on_view = "  (with FREEZE_ON_VIEW=True)";
+    }
     return PyUnicode_FromFormat(
                         "  %s : %s\n  %s : %s\n"
                         "  %s : %s\n  %s : %s%s\n"
-                        "  %s : %s\n  %s : %s\n",
+                        "  %s : %s\n  %s : %s%s\n",
                         "C_CONTIGUOUS",    _torf_(fl, NPY_ARRAY_C_CONTIGUOUS),
                         "F_CONTIGUOUS",    _torf_(fl, NPY_ARRAY_F_CONTIGUOUS),
                         "OWNDATA",         _torf_(fl, NPY_ARRAY_OWNDATA),
                         "WRITEABLE",       _torf_(fl, NPY_ARRAY_WRITEABLE),
                         _warn_on_write,
                         "ALIGNED",         _torf_(fl, NPY_ARRAY_ALIGNED),
-                        "WRITEBACKIFCOPY", _torf_(fl, NPY_ARRAY_WRITEBACKIFCOPY)
+                        "WRITEBACKIFCOPY", _torf_(fl, NPY_ARRAY_WRITEBACKIFCOPY),
+                        _freeze_on_view
     );
 }
 

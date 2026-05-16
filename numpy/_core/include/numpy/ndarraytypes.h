@@ -841,6 +841,12 @@ typedef struct tagPyArrayObject_fields {
 #if NPY_FEATURE_VERSION >= NPY_1_22_API_VERSION
     PyObject *mem_handler;
 #endif
+    /*
+     * Number of current active views of this array.
+     */
+#if NPY_FEATURE_VERSION >= NPY_2_5_API_VERSION
+    npy_intp _view_count;
+#endif
 } PyArrayObject_fields;
 
 /*
