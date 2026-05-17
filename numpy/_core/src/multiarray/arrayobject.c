@@ -618,8 +618,19 @@ NPY_NO_EXPORT int
 PyArray_FailUnlessWriteable(PyArrayObject *obj, const char *name)
 {
     if (!PyArray_ISWRITEABLE(obj)) {
+        PyObject *base = PyArray_BASE(obj);
         if (PyArray_CHKFLAGS(obj, NPY_ARRAY_FREEZE_ON_VIEW)) {
-            PyErr_Format(PyExc_ValueError, "%s is frozen because of active views", name);
+            PyErr_Format(PyExc_ValueError,
+                    "%s has freeze_on_view enabled and cannot be written "
+                    "to while a view of it exists", name);
+            return -1;
+        }
+        if (base != NULL && PyArray_Check(base) &&
+                PyArray_CHKFLAGS((PyArrayObject *)base,
+                                 NPY_ARRAY_FREEZE_ON_VIEW)) {
+            PyErr_Format(PyExc_ValueError,
+                    "%s is a view of an array with freeze_on_view enabled "
+                    "and cannot be written to while the view exists", name);
             return -1;
         }
         PyErr_Format(PyExc_ValueError, "%s is read-only", name);
