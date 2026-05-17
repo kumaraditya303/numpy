@@ -3,7 +3,7 @@ import numpy as np
 x = np.arange(10)
 x.flags.freeze_on_view=1
 print(x)
-x[1:] = 0
+x[1:] = x[1:] * 2
 y = x[1:]
 print(y)
 try:
