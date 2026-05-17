@@ -856,14 +856,15 @@ get_item_pointer(PyArrayObject *self, char **ptr,
  * @param view Resulting array (new reference)
  * @param indices parsed index information
  * @param index_num number of indices
- * @param ensure_array true if result should be a base class array, 
+ * @param ensure_array true if result should be a base class array,
  *        false if result should inherit type from self
  *
  * @return 0 on success -1 on failure
  */
 static int
 get_view_from_index(PyArrayObject *self, PyArrayObject **view,
-                    npy_index_info *indices, int index_num, int ensure_array) {
+                    npy_index_info *indices, int index_num, int ensure_array,
+                    int no_freeze_count) {
     npy_intp new_strides[NPY_MAXDIMS];
     npy_intp new_shape[NPY_MAXDIMS];
     int i, j;
@@ -937,7 +938,9 @@ get_view_from_index(PyArrayObject *self, PyArrayObject **view,
             new_dim, new_shape, new_strides, data_ptr,
             PyArray_FLAGS(self),
             ensure_array ? NULL : (PyObject *)self,
-            (PyObject *)self, _NPY_ARRAY_ENSURE_DTYPE_IDENTITY);
+            (PyObject *)self,
+            _NPY_ARRAY_ENSURE_DTYPE_IDENTITY |
+            (no_freeze_count ? _NPY_ARRAY_VIEW_DONT_COUNT : 0));
     if (*view == NULL) {
         return -1;
     }
@@ -1326,7 +1329,7 @@ array_item_asarray(PyArrayObject *self, npy_intp i)
     indices[1].value = PyArray_NDIM(self) - 1;
     indices[1].type = HAS_ELLIPSIS;
     if (get_view_from_index(self, (PyArrayObject **)&result,
-                            indices, 2, 0) < 0) {
+                            indices, 2, 0, 0) < 0) {
         return NULL;
     }
     return result;
@@ -1566,7 +1569,8 @@ array_subscript(PyArrayObject *self, PyObject *op)
     else if (index_type & (HAS_SLICE | HAS_NEWAXIS |
                            HAS_ELLIPSIS | HAS_INTEGER)) {
         if (get_view_from_index(self, &view, indices, index_num,
-                                (index_type & HAS_FANCY)) < 0) {
+                                (index_type & HAS_FANCY),
+                                0) < 0) {
             goto finish;
         }
 
@@ -1812,7 +1816,8 @@ array_assign_item(PyArrayObject *self, Py_ssize_t i, PyObject *op)
 
         indices[1].value = PyArray_NDIM(self) - 1;
         indices[1].type = HAS_ELLIPSIS;
-        if (get_view_from_index(self, &view, indices, 2, 0) < 0) {
+        if (get_view_from_index(self, &view, indices, 2, 0,
+                                1) < 0) {
             return -1;
         }
         if (PyArray_CopyObject(view, op) < 0) {
@@ -1965,7 +1970,8 @@ array_assign_subscript(PyArrayObject *self, PyObject *ind, PyObject *op)
     else if (index_type & (HAS_SLICE | HAS_NEWAXIS |
                            HAS_ELLIPSIS | HAS_INTEGER)) {
         if (get_view_from_index(self, &view, indices, index_num,
-                                (index_type & HAS_FANCY)) < 0) {
+                                (index_type & HAS_FANCY),
+                                1) < 0) {
             goto fail;
         }
     }
@@ -3393,7 +3399,8 @@ PyArray_MapIterArrayCopyIfOverlap(PyArrayObject * a, PyObject * index,
 
     /* If it is not a pure fancy index, need to get the subspace */
     if (index_type != HAS_FANCY) {
-        if (get_view_from_index(a, &subspace, indices, index_num, 1) < 0) {
+        if (get_view_from_index(a, &subspace, indices, index_num, 1,
+                                1) < 0) {
             goto fail;
         }
     }

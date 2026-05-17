@@ -32,6 +32,8 @@ typedef enum {
      * possibly for future dtypes that store more metadata).
      */
     _NPY_ARRAY_ENSURE_DTYPE_IDENTITY = 1 << 2,
+    /* don't count this view against a freeze-on-view base */
+    _NPY_ARRAY_VIEW_DONT_COUNT = 1 << 3,
 } _NPY_CREATION_FLAGS;
 
 NPY_NO_EXPORT PyObject *

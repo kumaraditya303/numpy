@@ -227,11 +227,14 @@ PyArray_SetBaseObject(PyArrayObject *arr, PyObject *obj)
      */
     if (PyArray_Check(obj) &&
             (PyArray_FLAGS((PyArrayObject *)obj) & NPY_ARRAY_FREEZE_ON_VIEW)) {
-        PyArray_CLEARFLAGS(arr, NPY_ARRAY_WRITEABLE);
-        PyArrayObject_fields *base = (PyArrayObject_fields *)obj;
-        base->_view_count++;
-        if (base->_view_count == 1) {
-            PyArray_CLEARFLAGS((PyArrayObject *)base, NPY_ARRAY_WRITEABLE);
+        PyArray_CLEARFLAGS(arr, NPY_ARRAY_FREEZE_ON_VIEW);
+        if (!(PyArray_FLAGS(arr) & NPY_ARRAY_VIEW_DONT_COUNT)) {
+            PyArray_CLEARFLAGS(arr, NPY_ARRAY_WRITEABLE);
+            PyArrayObject_fields *base = (PyArrayObject_fields *)obj;
+            base->_view_count++;
+            if (base->_view_count == 1) {
+                PyArray_CLEARFLAGS((PyArrayObject *)base, NPY_ARRAY_WRITEABLE);
+            }
         }
     }
 
@@ -428,15 +431,14 @@ _clear_array_attributes(PyArrayObject *self, npy_bool unraisable)
                 return -1;
             }
         }
-        /*
-         */
         if (!(fa->flags & NPY_ARRAY_WRITEBACKIFCOPY) &&
+                !(fa->flags & NPY_ARRAY_VIEW_DONT_COUNT) &&
                 PyArray_Check(fa->base) &&
                 (PyArray_FLAGS((PyArrayObject *)fa->base)
                     & NPY_ARRAY_FREEZE_ON_VIEW)) {
-            PyArrayObject_fields *base_fa = (PyArrayObject_fields *)fa->base;
-            base_fa->_view_count--;
-            if (base_fa->_view_count == 0) {
+            PyArrayObject_fields *base = (PyArrayObject_fields *)fa->base;
+            base->_view_count--;
+            if (base->_view_count == 0) {
                 PyArray_ENABLEFLAGS((PyArrayObject *)fa->base,
                                     NPY_ARRAY_WRITEABLE);
             }
