@@ -43,6 +43,11 @@ static const int NPY_ARRAY_WARN_ON_WRITE = (1 << 31);
  */
 static const int NPY_ARRAY_FREEZE_ON_VIEW = (1 << 25);
 
+/* This flag is used to mark views which should not be counted for
+ * freeze-on-view.
+ */
+static const int NPY_ARRAY_VIEW_DONT_COUNT = (1 << 24);
+
 
 /*
  * These flags are used internally to indicate an array that was previously
