@@ -298,6 +298,130 @@ class TestFlags:
         assert a.flags.f_contiguous == (len(x) <= 1)
 
 
+class TestFreezeOnView:
+    def test_freeze_on_view_flag(self):
+        # The flag is reachable both as an attribute and as an item, and
+        # defaults to False.
+        a = np.arange(10)
+        assert a.flags.freeze_on_view is False
+        assert a.flags['FREEZE_ON_VIEW'] is False
+
+        a.flags.freeze_on_view = True
+        assert a.flags.freeze_on_view is True
+        assert a.flags['FREEZE_ON_VIEW'] is True
+
+        b = np.arange(10)
+        b.flags['FREEZE_ON_VIEW'] = True
+        assert b.flags.freeze_on_view is True
+
+    def test_freeze_on_view_freezes_base(self):
+        a = np.arange(10)
+        a.flags.freeze_on_view = True
+        # No view yet: the base is still writeable.
+        a[0] = 1
+        assert a.flags.writeable
+
+        v = a[1:]
+        # Creating a view freezes the base and the view itself.
+        assert not a.flags.writeable
+        assert not v.flags.writeable
+
+        with pytest.raises(ValueError,
+                           match="freeze_on_view enabled and cannot be"
+                                 " written"):
+            a[0] = 2
+        with pytest.raises(ValueError,
+                           match="freeze_on_view enabled and cannot be"
+                                 " written"):
+            a[2:] = 0
+        with pytest.raises(ValueError,
+                           match="freeze_on_view enabled and cannot be"
+                                 " written"):
+            v[0] = 2
+        with pytest.raises(ValueError,
+                           match="freeze_on_view enabled and cannot be"
+                                 " written"):
+            v[1:] = 0
+
+    def test_freeze_on_view_writeable_again(self):
+        a = np.arange(10)
+        a.flags.freeze_on_view = True
+
+        v = a[1:]
+        assert not a.flags.writeable
+
+        del v
+        gc.collect()
+        # Once the last view is dropped the base is writeable again.
+        assert a.flags.writeable
+        a[0] = 5
+        assert a[0] == 5
+
+    def test_freeze_on_view_refcounts_multiple_views(self):
+        a = np.arange(10)
+        a.flags.freeze_on_view = True
+
+        v1 = a[1:]
+        v2 = a[:5]
+        v3 = v1[1:]  # view of a view; base collapses to ``a``
+        assert not a.flags.writeable
+
+        del v1
+        gc.collect()
+        assert not a.flags.writeable, "still frozen while views remain"
+
+        del v2
+        gc.collect()
+        assert not a.flags.writeable, "still frozen while views remain"
+
+        del v3
+        gc.collect()
+        assert a.flags.writeable
+
+    def test_freeze_on_view_copy_does_not_freeze(self):
+        a = np.arange(10)
+        a.flags.freeze_on_view = True
+
+        b = a.copy()
+        assert a.flags.writeable
+        a[0] = 1
+        b[0] = 1
+
+    def test_freeze_on_view_base_outlives_views(self):
+        a = np.arange(10)
+        a.flags.freeze_on_view = True
+        v = a[1:]
+
+        a_ref = weakref.ref(a)
+        del a
+        gc.collect()
+        assert a_ref() is not None, "view keeps the base alive"
+        with pytest.raises(ValueError,
+                           match="freeze_on_view enabled and cannot be"
+                                 " written"):
+            v[0] = 2
+
+        del v
+        gc.collect()
+        assert a_ref() is None
+
+    def test_slice_assignment_without_view(self):
+        a = np.arange(10)
+        a.flags.freeze_on_view = True
+        a[1:] = 0
+        assert np.array_equal(a, [0] + [0] * 9)
+        assert a.flags.writeable
+
+    def test_view_of_view(self):
+        x = np.arange(10)
+        x.flags.freeze_on_view = True
+        v1 = x[1:]
+        v2 = v1[1:]
+        assert not x.flags.writeable
+        assert not v1.flags.writeable
+        assert not v2.flags.writeable
+
+
 class TestHash:
     # see #3793
     def test_int(self):
