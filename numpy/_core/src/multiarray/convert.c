@@ -660,6 +660,19 @@ decide_view_dtype_path(
 }
 
 
+NPY_NO_EXPORT PyObject *
+PyArray_ViewDontFreeze(PyArrayObject *self)
+{
+    PyArray_Descr *dtype = PyArray_DESCR(self);
+    Py_INCREF(dtype);
+    return PyArray_NewFromDescr_int(
+            &PyArray_Type, dtype,
+            PyArray_NDIM(self), PyArray_DIMS(self), PyArray_STRIDES(self),
+            PyArray_DATA(self), PyArray_FLAGS(self),
+            (PyObject *)self, (PyObject *)self,
+            _NPY_ARRAY_ENSURE_DTYPE_IDENTITY | _NPY_ARRAY_VIEW_DONT_COUNT);
+}
+
 /*NUMPY_API
  * View
  * steals a reference to type -- accepts NULL

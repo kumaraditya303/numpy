@@ -1309,7 +1309,7 @@ array_assign_boolean_subscript(PyArrayObject *self,
  * positive indices.
  */
 NPY_NO_EXPORT PyObject *
-array_item_asarray(PyArrayObject *self, npy_intp i)
+array_item_asarray(PyArrayObject *self, npy_intp i, int no_freeze_count)
 {
     npy_index_info indices[2];
     PyObject *result;
@@ -1329,7 +1329,7 @@ array_item_asarray(PyArrayObject *self, npy_intp i)
     indices[1].value = PyArray_NDIM(self) - 1;
     indices[1].type = HAS_ELLIPSIS;
     if (get_view_from_index(self, (PyArrayObject **)&result,
-                            indices, 2, 0, 0) < 0) {
+                            indices, 2, 0, no_freeze_count) < 0) {
         return NULL;
     }
     return result;
@@ -1362,7 +1362,7 @@ array_item(PyArrayObject *self, Py_ssize_t i)
         return PyArray_Scalar(item, PyArray_DESCR(self), (PyObject *)self);
     }
     else {
-        return array_item_asarray(self, i);
+        return array_item_asarray(self, i, 0);
     }
 }
 
