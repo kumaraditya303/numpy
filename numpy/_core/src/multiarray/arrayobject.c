@@ -225,6 +225,10 @@ PyArray_SetBaseObject(PyArrayObject *arr, PyObject *obj)
      * base array then make the array read only. When the last view is deleted the
      * array will be made writeable again.
      */
+    if (PyArray_Check(obj) && npy_global_state.freeze_on_view &&
+            !(PyArray_FLAGS(arr) & NPY_ARRAY_VIEW_DONT_COUNT)) {
+        PyArray_ENABLEFLAGS((PyArrayObject *)obj, NPY_ARRAY_FREEZE_ON_VIEW);
+    }
     if (PyArray_Check(obj) &&
             (PyArray_FLAGS((PyArrayObject *)obj) & NPY_ARRAY_FREEZE_ON_VIEW)) {
         PyArray_CLEARFLAGS(arr, NPY_ARRAY_FREEZE_ON_VIEW);

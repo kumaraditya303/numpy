@@ -501,8 +501,7 @@ PyArray_ConcatenateArrays(int narrays, PyArrayObject **arrays, int axis,
      * Create a view which slides through ret for assigning the
      * successive input arrays.
      */
-    sliding_view = (PyArrayObject_fields *)PyArray_View(ret,
-                                                        NULL, &PyArray_Type);
+    sliding_view = (PyArrayObject_fields *)PyArray_ViewDontFreeze(ret);
     if (sliding_view == NULL) {
         Py_DECREF(ret);
         return NULL;
@@ -603,8 +602,7 @@ PyArray_ConcatenateFlattenedArrays(int narrays, PyArrayObject **arrays,
      * Create a view which slides through ret for assigning the
      * successive input arrays.
      */
-    sliding_view = (PyArrayObject_fields *)PyArray_View(ret,
-                                                        NULL, &PyArray_Type);
+    sliding_view = (PyArrayObject_fields *)PyArray_ViewDontFreeze(ret);
     if (sliding_view == NULL) {
         Py_DECREF(ret);
         return NULL;
@@ -4563,6 +4561,23 @@ _set_numpy_warn_if_no_mem_policy(PyObject *NPY_UNUSED(self), PyObject *arg)
     }
 }
 
+static PyObject *
+_set_freeze_on_view(PyObject *NPY_UNUSED(self), PyObject *arg)
+{
+    int res = PyObject_IsTrue(arg);
+    if (res < 0) {
+        return NULL;
+    }
+    int old_value = npy_global_state.freeze_on_view;
+    npy_global_state.freeze_on_view = res;
+    if (old_value) {
+        Py_RETURN_TRUE;
+    }
+    else {
+        Py_RETURN_FALSE;
+    }
+}
+
 
 static PyObject *
 _blas_supports_fpe(PyObject *NPY_UNUSED(self), PyObject *arg) {
@@ -4817,6 +4832,9 @@ static struct PyMethodDef array_module_methods[] = {
     {"_set_numpy_warn_if_no_mem_policy",
          (PyCFunction)_set_numpy_warn_if_no_mem_policy,
          METH_O, "Change the warn if no mem policy flag for testing."},
+    {"_set_freeze_on_view",
+         (PyCFunction)_set_freeze_on_view,
+         METH_O, "Globally enable freeze-on-view for all arrays."},
     {"_get_sfloat_dtype",
         get_sfloat_dtype, METH_NOARGS, NULL},
     {"_get_madvise_hugepage", (PyCFunction)_get_madvise_hugepage,
@@ -5018,7 +5036,13 @@ initialize_global_state(void) {
     else {
         npy_global_state.warn_if_no_mem_policy = 0;
     }
-
+    char *freeze_on_view_env = getenv("NUMPY_FREEZE_ON_VIEW");
+    if ((freeze_on_view_env != NULL) && (strncmp(freeze_on_view_env, "1", 1) == 0)) {
+        npy_global_state.freeze_on_view = 1;
+    }
+    else {
+        npy_global_state.freeze_on_view = 0;
+    }
     return 0;
 }
 

@@ -492,7 +492,7 @@ PyArray_AssignFromCache_Recursive(
             }
             else {
                 PyArrayObject *view;
-                view = (PyArrayObject *)array_item_asarray(self, i);
+                view = (PyArrayObject *)array_item_asarray(self, i, 1);
                 if (view == NULL) {
                     goto finish_critical_section;
                 }

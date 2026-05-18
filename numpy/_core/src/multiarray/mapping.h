@@ -139,7 +139,7 @@ NPY_NO_EXPORT Py_ssize_t
 array_length(PyArrayObject *self);
 
 NPY_NO_EXPORT PyObject *
-array_item_asarray(PyArrayObject *self, npy_intp i);
+array_item_asarray(PyArrayObject *self, npy_intp i, int no_freeze_count);
 
 NPY_NO_EXPORT PyObject *
 array_item_asscalar(PyArrayObject *self, npy_intp i);

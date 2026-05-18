@@ -30,6 +30,8 @@ typedef struct npy_global_state_struct {
      * if there is no memory policy set
      */
     int warn_if_no_mem_policy;
+
+    int freeze_on_view;
 } npy_global_state_struct;
 
 
