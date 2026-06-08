@@ -507,7 +507,7 @@ _get_part(PyArrayObject *self, PyObject *ufunc, PyBoundArrayMethodObject *meth, 
             PyArray_NDIM(self), PyArray_DIMS(self),
             PyArray_STRIDES(self), PyArray_BYTES(self) + view_offset,
             PyArray_FLAGS(self), (PyObject *)self, (PyObject *)self,
-            _NPY_ARRAY_ENSURE_DTYPE_IDENTITY);
+            _NPY_ARRAY_ENSURE_DTYPE_IDENTITY | _NPY_ARRAY_VIEW_DONT_COUNT);
     }
     else if (!need_view) {
         // resolve_descriptors was successful, but view_offset is not set so we call

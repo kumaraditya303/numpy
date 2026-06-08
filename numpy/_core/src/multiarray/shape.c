@@ -10,8 +10,11 @@
 #include "numpy/npy_math.h"
 
 #include "npy_config.h"
+#include "npy_pycompat.h"
 #include "arraywrap.h"
+#include "convert.h"
 #include "ctors.h"
+#include "multiarraymodule.h"
 #include "shape.h"
 #include "npy_static_data.h" /* for interned strings */
 #include "templ_common.h" /* for npy_mul_sizes_with_overflow */
@@ -205,6 +208,22 @@ PyArray_Resize(PyArrayObject *self, PyArray_Dims *newshape, int refcheck,
     Py_RETURN_NONE;
 }
 
+NPY_NO_EXPORT int
+npy_check_unique_temporary(PyObject *obj)
+{
+#if PY_VERSION_HEX == 0x030E00A7
+#error "NumPy is broken on CPython 3.14.0a7, please update to a newer version"
+#elif PY_VERSION_HEX >= 0x030E00B1
+    // Python 3.14 changed the semantics for reference counting temporaries,
+    // see https://github.com/python/cpython/issues/133164
+    return PyUnstable_Object_IsUniqueReferencedTemporary(obj);
+#else
+    // equivalent to Py_REFCNT(obj) == 1 except on 3.13t, where we need the
+    // backport because this function was first exposed in 3.14
+    return PyUnstable_Object_IsUniquelyReferenced(obj);
+#endif
+}
+
 /*
  * Returns a new array
  * with the new shape from the data
@@ -219,13 +238,13 @@ NPY_NO_EXPORT PyObject *
 PyArray_Newshape(PyArrayObject *self, PyArray_Dims *newdims,
                  NPY_ORDER order)
 {
-    return _reshape_with_copy_arg(self, newdims, order, NPY_COPY_IF_NEEDED);
+    return _reshape_with_copy_arg(self, newdims, order, NPY_COPY_IF_NEEDED, 0);
 }
 
 
 NPY_NO_EXPORT PyObject *
 _reshape_with_copy_arg(PyArrayObject *array, PyArray_Dims *newdims,
-                       NPY_ORDER order, NPY_COPYMODE copy)
+                       NPY_ORDER order, NPY_COPYMODE copy, int allow_dont_freeze)
 {
     npy_intp i;
     npy_intp *dimensions = newdims->ptr;
@@ -235,6 +254,18 @@ _reshape_with_copy_arg(PyArrayObject *array, PyArray_Dims *newdims,
     npy_intp *strides = NULL;
     npy_intp newstrides[NPY_MAXDIMS];
     int flags;
+
+    /*
+     * Whether the returned view may skip freeze-on-view counting.  Only the
+     * Python `reshape` method opts in (`allow_dont_freeze`), and only when the
+     * feature is active.  The base is unreachable by the user -- and so safe to
+     * leave writeable -- when the input is a uniquely referenced temporary, or
+     * when we make a private copy below.  Computed before the `Py_INCREF` below
+     * so the temporary check sees the array's pristine reference count.
+     */
+    int may_skip_freeze = allow_dont_freeze && npy_global_state.freeze_on_view;
+    int dont_count = may_skip_freeze &&
+                     npy_check_unique_temporary((PyObject *)array);
 
     if (order == NPY_ANYORDER) {
         order = PyArray_ISFORTRAN(array) ? NPY_FORTRANORDER : NPY_CORDER;
@@ -255,6 +286,9 @@ _reshape_with_copy_arg(PyArrayObject *array, PyArray_Dims *newdims,
             i++;
         }
         if (same) {
+            if (dont_count) {
+                return PyArray_ViewDontFreeze(array);
+            }
             return PyArray_View(array, NULL, NULL);
         }
     }
@@ -275,6 +309,8 @@ _reshape_with_copy_arg(PyArrayObject *array, PyArray_Dims *newdims,
             return NULL;
         }
         array = (PyArrayObject *)newcopy;
+        /* the fresh copy is private to the returned view */
+        dont_count = may_skip_freeze;
     }
     else {
         /*
@@ -306,6 +342,8 @@ _reshape_with_copy_arg(PyArrayObject *array, PyArray_Dims *newdims,
                     return NULL;
                 }
                 array = (PyArrayObject *)newcopy;
+                /* the fresh copy is private to the returned view */
+                dont_count = may_skip_freeze;
             }
         }
     }
@@ -329,7 +367,8 @@ _reshape_with_copy_arg(PyArrayObject *array, PyArray_Dims *newdims,
             Py_TYPE(array), PyArray_DESCR(array),
             ndim, dimensions, strides, PyArray_DATA(array),
             flags, (PyObject *)array, (PyObject *)array,
-            _NPY_ARRAY_ENSURE_DTYPE_IDENTITY);
+            _NPY_ARRAY_ENSURE_DTYPE_IDENTITY |
+            (dont_count ? _NPY_ARRAY_VIEW_DONT_COUNT : 0));
     Py_DECREF(array);
     return (PyObject *)ret;
 }

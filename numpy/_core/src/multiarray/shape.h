@@ -35,8 +35,23 @@ PyArray_SqueezeSelected(PyArrayObject *self, npy_bool *axis_flags);
 NPY_NO_EXPORT PyObject *
 PyArray_MatrixTranspose(PyArrayObject *ap);
 
+/*
+ * Reshape `array` to `newdims`.  When `allow_dont_freeze` is non-zero and the
+ * input is a uniquely referenced temporary (so the caller cannot reach the
+ * result's base except through the returned view), the view is created without
+ * counting against freeze-on-view -- it stays writeable instead of freezing a
+ * base nothing else can observe.  Public C-API entry points pass 0 here.
+ */
 NPY_NO_EXPORT PyObject *
 _reshape_with_copy_arg(PyArrayObject *array, PyArray_Dims *newdims,
-                       NPY_ORDER order, NPY_COPYMODE copy);
+                       NPY_ORDER order, NPY_COPYMODE copy, int allow_dont_freeze);
+
+/*
+ * Return non-zero if `obj` is a uniquely referenced temporary, i.e. the only
+ * reference is the one held by the Python caller of the C function the
+ * interpreter is currently evaluating.  Mirrors the check in temp_elide.c.
+ */
+NPY_NO_EXPORT int
+npy_check_unique_temporary(PyObject *obj);
 
 #endif  /* NUMPY_CORE_SRC_MULTIARRAY_SHAPE_H_ */
