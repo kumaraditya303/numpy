@@ -20,6 +20,7 @@
 #include "templ_common.h" /* for npy_mul_sizes_with_overflow */
 #include "ctors.h"
 #include "calculation.h"
+#include "convert.h"
 #include "convert_datatype.h"
 #include "descriptor.h"
 #include "dtypemeta.h"
@@ -190,6 +191,15 @@ array_reshape(PyArrayObject *self, PyObject *args, PyObject *kwds)
 
     if (n <= 1) {
         if (n != 0 && PyTuple_GET_ITEM(args, 0) == Py_None) {
+            /*
+             * reshape(None) is a plain view; skip freeze-on-view counting when
+             * `self` is a uniquely referenced temporary (see array_reshape's
+             * call into _reshape_with_copy_arg below).
+             */
+            if (npy_global_state.freeze_on_view &&
+                    npy_check_unique_temporary((PyObject *)self)) {
+                return PyArray_ViewDontFreeze(self);
+            }
             return PyArray_View(self, NULL, NULL);
         }
         if (!PyArg_ParseTuple(args, "O&:reshape", PyArray_IntpConverter,
@@ -206,7 +216,7 @@ array_reshape(PyArrayObject *self, PyObject *args, PyObject *kwds)
             goto fail;
         }
     }
-    ret = _reshape_with_copy_arg(self, &newshape, order, copy);
+    ret = _reshape_with_copy_arg(self, &newshape, order, copy, 1);
     npy_free_cache_dim_obj(newshape);
     return ret;
 

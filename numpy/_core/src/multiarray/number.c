@@ -10,8 +10,10 @@
 #include "npy_config.h"
 #include "npy_pycompat.h"
 #include "npy_import.h"
+#include "arrayobject.h"
 #include "common.h"
 #include "number.h"
+#include "shape.h"
 #include "temp_elide.h"
 
 #include "binop_override.h"
@@ -224,16 +226,65 @@ PyArray_GenericUnaryFunction(PyArrayObject *m1, PyObject *op)
     return PyObject_CallFunctionObjArgs(op, m1, NULL);
 }
 
+/*
+ * Augmented assignment such as ``a[1:] *= 2`` desugars to
+ * ``a[1:] = a[1:].__imul__(2)``.  The read step ``a[1:]`` produces an ordinary
+ * counted view which, under freeze-on-view, freezes ``a`` and is itself
+ * read-only -- so both the in-place op and the trailing write-back would raise.
+ * But that view is a uniquely referenced temporary the user cannot reach, and
+ * if it is the *only* view of its base then nothing else can observe the base
+ * either.  In that case release the freeze the transient holds (promoting it to
+ * a non-counting view) so the explicit in-place modification proceeds, exactly
+ * as it would without freeze-on-view.
+ *
+ * Does nothing unless ``self`` is such a sole, uniquely referenced, frozen
+ * view; a named view (``v = a[1:]; v *= 2``) is not a unique temporary and is
+ * left frozen, and a base array with live views (``a *= 2`` while a view
+ * exists) does not own-data-fail the first guard but is excluded by owning its
+ * data.
+ */
+static void
+maybe_unfreeze_inplace_view(PyArrayObject *self)
+{
+    /* Only a frozen view qualifies: read-only, not owning data, still counted. */
+    if (PyArray_ISWRITEABLE(self) ||
+            (PyArray_FLAGS(self) &
+                 (NPY_ARRAY_OWNDATA | NPY_ARRAY_VIEW_DONT_COUNT))) {
+        return;
+    }
+    PyObject *base = PyArray_BASE(self);
+    if (base == NULL || !PyArray_Check(base) ||
+            !PyArray_CHKFLAGS((PyArrayObject *)base, NPY_ARRAY_FREEZE_ON_VIEW)) {
+        return;
+    }
+    PyArrayObject_fields *bf = (PyArrayObject_fields *)base;
+    /*
+     * Must be the sole counted view and a uniquely referenced temporary (the
+     * augmented assignment's transient), so releasing the freeze cannot
+     * surprise any other holder of the base or the view.
+     */
+    if (bf->_view_count != 1 ||
+            !npy_check_unique_temporary((PyObject *)self)) {
+        return;
+    }
+    PyArray_ENABLEFLAGS(self, NPY_ARRAY_VIEW_DONT_COUNT);
+    PyArray_ENABLEFLAGS(self, NPY_ARRAY_WRITEABLE);
+    bf->_view_count = 0;
+    PyArray_ENABLEFLAGS((PyArrayObject *)base, NPY_ARRAY_WRITEABLE);
+}
+
 static PyObject *
 PyArray_GenericInplaceBinaryFunction(PyArrayObject *m1,
                                      PyObject *m2, PyObject *op)
 {
+    maybe_unfreeze_inplace_view(m1);
     return PyObject_CallFunctionObjArgs(op, m1, m2, m1, NULL);
 }
 
 static PyObject *
 PyArray_GenericInplaceUnaryFunction(PyArrayObject *m1, PyObject *op)
 {
+    maybe_unfreeze_inplace_view(m1);
     return PyObject_CallFunctionObjArgs(op, m1, m1, NULL);
 }
 
@@ -299,6 +350,8 @@ array_inplace_matrix_multiply(PyArrayObject *self, PyObject *other)
 {
     INPLACE_GIVE_UP_IF_NEEDED(self, other,
             nb_inplace_matrix_multiply, array_inplace_matrix_multiply);
+
+    maybe_unfreeze_inplace_view(self);
 
     PyObject *args = PyTuple_Pack(3, self, other, self);
     if (args == NULL) {

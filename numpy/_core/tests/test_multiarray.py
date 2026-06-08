@@ -421,6 +421,113 @@ class TestFreezeOnView:
         assert not v1.flags.writeable
         assert not v2.flags.writeable
 
+    def test_eye_with_global_freeze_on_view(self):
+        # np.eye writes the diagonal via ``m[:M - k].flat[...] = 1``, which
+        # takes an internal view of the freshly created array.  With
+        # freeze_on_view enabled globally that view must not freeze the base,
+        # otherwise the construction would fail.
+        from numpy._core._multiarray_umath import _set_freeze_on_view
+        old = _set_freeze_on_view(True)
+        try:
+            a = np.eye(3)
+            assert_array_equal(a, [[1., 0., 0.],
+                                   [0., 1., 0.],
+                                   [0., 0., 1.]])
+            # Off-diagonal eye exercises the ``m[:M - k]`` slice path too.
+            assert_array_equal(np.eye(3, k=1), [[0., 1., 0.],
+                                                [0., 0., 1.],
+                                                [0., 0., 0.]])
+        finally:
+            _set_freeze_on_view(old)
+
+    def test_freeze_on_view_real_imag_assignment(self):
+        # Assigning to ``.real`` / ``.imag`` gets the part as an internal view
+        # (``_get_part`` in getset.c) and copies into it.  That view must not
+        # count toward the freeze, otherwise the copy would hit a frozen,
+        # read-only target and raise.
+        a = np.array([1 + 2j, 3 + 4j, 5 + 6j])
+        a.flags.freeze_on_view = True
+
+        a.real = [10, 20, 30]
+        assert_array_equal(a, [10 + 2j, 20 + 4j, 30 + 6j])
+        # The internal view did not freeze the base.
+        assert a.flags.writeable
+
+        a.imag = [7, 8, 9]
+        assert_array_equal(a, [10 + 7j, 20 + 8j, 30 + 9j])
+        assert a.flags.writeable
+
+    def test_freeze_on_view_real_imag_assignment_global(self):
+        # Same as above but with freeze_on_view enabled globally, which is the
+        # path that turns ``.real`` / ``.imag`` assignment into a view of a
+        # freshly created array.
+        from numpy._core._multiarray_umath import _set_freeze_on_view
+        old = _set_freeze_on_view(True)
+        try:
+            a = np.array([1 + 1j, 2 + 2j])
+            a.real = [9, 9]
+            assert_array_equal(a, [9 + 1j, 9 + 2j])
+            a.imag = [0, 0]
+            assert_array_equal(a, [9 + 0j, 9 + 0j])
+
+            # ``.real`` assignment on a real array writes the array in place.
+            b = np.arange(3, dtype=float)
+            b.real = [4, 5, 6]
+            assert_array_equal(b, [4., 5., 6.])
+        finally:
+            _set_freeze_on_view(old)
+
+    def test_freeze_on_view_augmented_slice_assignment(self):
+        # ``a[1:] *= 2`` reads ``a[1:]`` as a counted view, multiplies it in
+        # place, then stores it back.  The intermediate view is a uniquely
+        # referenced temporary and the only view of ``a``, so the in-place op
+        # releases the freeze it holds instead of raising.
+        a = np.arange(10)
+        a.flags.freeze_on_view = True
+        a[1:] *= 2
+        assert_array_equal(a, [0, 2, 4, 6, 8, 10, 12, 14, 16, 18])
+        # Once the transient view is gone the base is writeable again.
+        assert a.flags.writeable
+        a[0] = 100
+        assert a[0] == 100
+
+        # Other in-place operators take the same path.
+        b = np.arange(1, 6)
+        b.flags.freeze_on_view = True
+        b[2:] **= 2
+        assert_array_equal(b, [1, 2, 9, 16, 25])
+
+    def test_freeze_on_view_augmented_slice_assignment_global(self):
+        from numpy._core._multiarray_umath import _set_freeze_on_view
+        old = _set_freeze_on_view(True)
+        try:
+            a = np.arange(10.0)
+            a[::2] += 5
+            assert_array_equal(a, [5, 1, 7, 3, 9, 5, 11, 7, 13, 9])
+            assert a.flags.writeable
+        finally:
+            _set_freeze_on_view(old)
+
+    def test_freeze_on_view_inplace_named_view_blocked(self):
+        # A named view is not a unique temporary, so in-place modification
+        # through it must stay blocked -- it would surprise holders of ``a``.
+        a = np.arange(10)
+        a.flags.freeze_on_view = True
+        v = a[1:]
+        with pytest.raises(ValueError,
+                           match="freeze_on_view enabled"):
+            v *= 2
+
+    def test_freeze_on_view_augmented_slice_other_view_blocked(self):
+        # When another view is alive the slice is not the sole view of the
+        # base, so the augmented assignment must not silently mutate ``a``.
+        a = np.arange(10)
+        a.flags.freeze_on_view = True
+        v = a[2:]  # noqa: F841  keep a second view alive
+        with pytest.raises(ValueError,
+                           match="freeze_on_view enabled"):
+            a[1:] *= 2
+
 
 class TestHash:
     # see #3793

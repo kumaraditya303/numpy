@@ -246,7 +246,14 @@ def eye(N, M=None, k=0, dtype=float, order='C', *, device=None, like=None):
         i = k
     else:
         i = (-k) * M
-    m[:M - k].flat[i::M + 1] = 1
+    # Write the diagonal straight through ``m.flat`` instead of via a
+    # ``m[:M - k]`` slice.  The slice would create a view of ``m`` and, when
+    # freeze_on_view is enabled, that freezes ``m`` before the diagonal is
+    # written.  ``.flat`` assignment writes directly to ``m`` without taking
+    # a view.  ``m[:M - k]`` is a contiguous logical prefix of ``m``, so
+    # ``m[:M - k].flat[i::M + 1]`` is exactly ``m.flat[i:nrows * M:M + 1]``.
+    nrows = min(operator.index(N), M - k)
+    m.flat[i:nrows * M:M + 1] = 1
     return m
 
 
@@ -322,7 +329,14 @@ def diag(v, k=0):
             i = k
         else:
             i = (-k) * n
-        res[:n - k].flat[i::n + 1] = v
+        # Write the diagonal straight through ``res.flat`` instead of via a
+        # ``res[:n - k]`` slice.  The slice would create a view of ``res`` and,
+        # when freeze_on_view is enabled, that freezes ``res`` before the
+        # diagonal is written.  ``res[:n - k]`` is a contiguous logical prefix
+        # of ``res``, so ``res[:n - k].flat[i::n + 1]`` is exactly
+        # ``res.flat[i:nrows * n:n + 1]`` with ``nrows = min(n, n - k)``.
+        nrows = min(n, n - k)
+        res.flat[i:nrows * n:n + 1] = v
         return res
     elif len(s) == 2:
         return diagonal(v, k)

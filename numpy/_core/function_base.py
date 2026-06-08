@@ -175,11 +175,14 @@ def linspace(start, stop, num=50, endpoint=True, retstep=False, dtype=None,
     if endpoint and num > 1:
         y[-1, ...] = stop
 
-    if axis != 0:
-        y = _nx.moveaxis(y, 0, axis)
-
+    # Round before `moveaxis`: `floor(y, out=y)` must write to `y` while it is
+    # still the owning array, since the moved-axis result is a read-only view
+    # under freeze-on-view.
     if integer_dtype:
         _nx.floor(y, out=y)
+
+    if axis != 0:
+        y = _nx.moveaxis(y, 0, axis)
 
     y = conv.wrap(y.astype(dtype, copy=False))
     if retstep:

@@ -56,32 +56,53 @@ def _slice_at_axis(sl, axis):
     return (slice(None),) * axis + (sl,) + (...,)
 
 
-def _view_roi(array, original_area_slice, axis):
+def _roi_slice(sl, axis, original_area_slice):
     """
-    Get a view of the current region of interest during iterative padding.
+    Index ``axis`` of the padded array, restricted to the region of interest.
 
-    When padding multiple dimensions iteratively corner values are
-    unnecessarily overwritten multiple times. This function reduces the
-    working area for the first dimensions so that corners are excluded.
+    Like `_slice_at_axis`, but instead of leaving the trailing dimensions
+    untouched (``...``) it restricts them to the area holding the original
+    (already valid) values via `original_area_slice`. When padding multiple
+    dimensions iteratively this excludes the corner values, which are otherwise
+    unnecessarily overwritten multiple times.
+
+    Indexing the owning ``padded`` array directly (rather than a persistent
+    region-of-interest *view*) keeps writes as slice-assignments on the base
+    array, which stay writeable under ``NUMPY_FREEZE_ON_VIEW``.
 
     Parameters
     ----------
-    array : ndarray
-        The array with the region of interest.
+    sl : slice
+        The slice for the padded dimension ``axis``.
+    axis : int
+        The axis to which `sl` is applied. Dimensions before `axis` are left
+        unsliced; dimensions after `axis` are restricted to the original area.
     original_area_slice : tuple of slices
         Denotes the area with original values of the unpadded array.
-    axis : int
-        The currently padded dimension assuming that `axis` is padded before
-        `axis` + 1.
 
     Returns
     -------
-    roi : ndarray
-        The region of interest of the original `array`.
+    sl : tuple of slices
+        A tuple with slices matching the padded array's number of dimensions.
     """
-    axis += 1
-    sl = (slice(None),) * axis + original_area_slice[axis:]
-    return array[sl]
+    return ((slice(None),) * axis + (sl,)
+            + tuple(original_area_slice[axis + 1:]))
+
+
+def _release_if_frozen(arr):
+    """
+    Return a writeable copy of `arr` if it is a read-only (frozen) view.
+
+    Under ``NUMPY_FREEZE_ON_VIEW`` a view is read-only and keeps its base array
+    frozen for as long as it is alive. Padding repeatedly reads a chunk of the
+    padded array and writes it back into the pad area; while the chunk view is
+    alive the write-back to its base would fail. Copying the chunk releases the
+    view so the base becomes writeable again. When freeze-on-view is disabled
+    the chunk is writeable and is returned unchanged (no copy, no extra cost).
+    """
+    if not arr.flags.writeable:
+        return arr.copy()
+    return arr
 
 
 def _pad_simple(array, pad_width, fill_value=None):
@@ -127,7 +148,7 @@ def _pad_simple(array, pad_width, fill_value=None):
     return padded, original_area_slice
 
 
-def _set_pad_area(padded, axis, width_pair, value_pair):
+def _set_pad_area(padded, axis, width_pair, value_pair, original_area_slice):
     """
     Set empty-padded area in given dimension.
 
@@ -143,16 +164,20 @@ def _set_pad_area(padded, axis, width_pair, value_pair):
     value_pair : tuple of scalars or ndarrays
         Values inserted into the pad area on each side. It must match or be
         broadcastable to the shape of `arr`.
+    original_area_slice : tuple of slices
+        Denotes the area with original values of the unpadded array.
     """
-    left_slice = _slice_at_axis(slice(None, width_pair[0]), axis)
+    left_slice = _roi_slice(slice(None, width_pair[0]), axis,
+                            original_area_slice)
     padded[left_slice] = value_pair[0]
 
-    right_slice = _slice_at_axis(
-        slice(padded.shape[axis] - width_pair[1], None), axis)
+    right_slice = _roi_slice(
+        slice(padded.shape[axis] - width_pair[1], None), axis,
+        original_area_slice)
     padded[right_slice] = value_pair[1]
 
 
-def _get_edges(padded, axis, width_pair):
+def _get_edges(padded, axis, width_pair, original_area_slice):
     """
     Retrieve edge values from empty-padded array in given dimension.
 
@@ -165,6 +190,8 @@ def _get_edges(padded, axis, width_pair):
     width_pair : (int, int)
         Pair of widths that mark the pad area on both sides in the given
         dimension.
+    original_area_slice : tuple of slices
+        Denotes the area with original values of the unpadded array.
 
     Returns
     -------
@@ -174,17 +201,22 @@ def _get_edges(padded, axis, width_pair):
         `axis` which will have a length of 1.
     """
     left_index = width_pair[0]
-    left_slice = _slice_at_axis(slice(left_index, left_index + 1), axis)
-    left_edge = padded[left_slice]
+    left_slice = _roi_slice(slice(left_index, left_index + 1), axis,
+                            original_area_slice)
+    # Copy so the returned edges do not keep `padded` frozen during write-back
+    # under freeze-on-view (no-op otherwise, see `_release_if_frozen`).
+    left_edge = _release_if_frozen(padded[left_slice])
 
     right_index = padded.shape[axis] - width_pair[1]
-    right_slice = _slice_at_axis(slice(right_index - 1, right_index), axis)
-    right_edge = padded[right_slice]
+    right_slice = _roi_slice(slice(right_index - 1, right_index), axis,
+                             original_area_slice)
+    right_edge = _release_if_frozen(padded[right_slice])
 
     return left_edge, right_edge
 
 
-def _get_linear_ramps(padded, axis, width_pair, end_value_pair):
+def _get_linear_ramps(padded, axis, width_pair, end_value_pair,
+                      original_area_slice):
     """
     Construct linear ramps for empty-padded array in given dimension.
 
@@ -200,13 +232,15 @@ def _get_linear_ramps(padded, axis, width_pair, end_value_pair):
     end_value_pair : (scalar, scalar)
         End values for the linear ramps which form the edge of the fully padded
         array. These values are included in the linear ramps.
+    original_area_slice : tuple of slices
+        Denotes the area with original values of the unpadded array.
 
     Returns
     -------
     left_ramp, right_ramp : ndarray
         Linear ramps to set on both sides of `padded`.
     """
-    edge_pair = _get_edges(padded, axis, width_pair)
+    edge_pair = _get_edges(padded, axis, width_pair, original_area_slice)
 
     left_ramp, right_ramp = (
         np.linspace(
@@ -228,7 +262,8 @@ def _get_linear_ramps(padded, axis, width_pair, end_value_pair):
     return left_ramp, right_ramp
 
 
-def _get_stats(padded, axis, width_pair, length_pair, stat_func):
+def _get_stats(padded, axis, width_pair, length_pair, stat_func,
+               original_area_slice):
     """
     Calculate statistic for the empty-padded array in given dimension.
 
@@ -248,6 +283,8 @@ def _get_stats(padded, axis, width_pair, length_pair, stat_func):
     stat_func : function
         Function to compute statistic. The expected signature is
         ``stat_func(x: ndarray, axis: int, keepdims: bool) -> ndarray``.
+    original_area_slice : tuple of slices
+        Denotes the area with original values of the unpadded array.
 
     Returns
     -------
@@ -274,10 +311,15 @@ def _get_stats(padded, axis, width_pair, length_pair, stat_func):
         raise ValueError("stat_length of 0 yields no value for padding")
 
     # Calculate statistic for the left side
-    left_slice = _slice_at_axis(
-        slice(left_index, left_index + left_length), axis)
+    left_slice = _roi_slice(
+        slice(left_index, left_index + left_length), axis,
+        original_area_slice)
     left_chunk = padded[left_slice]
-    left_stat = stat_func(left_chunk, axis=axis, keepdims=True)
+    # The statistic may alias the (frozen) chunk for a trivial reduction, so
+    # release it to an owning array before the in-place round and write-back
+    # under freeze-on-view (no-op otherwise).
+    left_stat = _release_if_frozen(stat_func(left_chunk, axis=axis,
+                                             keepdims=True))
     _round_if_needed(left_stat, padded.dtype)
 
     if left_length == right_length == max_length:
@@ -285,17 +327,19 @@ def _get_stats(padded, axis, width_pair, length_pair, stat_func):
         return left_stat, left_stat
 
     # Calculate statistic for the right side
-    right_slice = _slice_at_axis(
-        slice(right_index - right_length, right_index), axis)
+    right_slice = _roi_slice(
+        slice(right_index - right_length, right_index), axis,
+        original_area_slice)
     right_chunk = padded[right_slice]
-    right_stat = stat_func(right_chunk, axis=axis, keepdims=True)
+    right_stat = _release_if_frozen(stat_func(right_chunk, axis=axis,
+                                              keepdims=True))
     _round_if_needed(right_stat, padded.dtype)
 
     return left_stat, right_stat
 
 
 def _set_reflect_both(padded, axis, width_pair, method,
-                      original_period, include_edge=False):
+                      original_period, original_area_slice, include_edge=False):
     """
     Pad `axis` of `arr` with reflection.
 
@@ -312,6 +356,8 @@ def _set_reflect_both(padded, axis, width_pair, method,
         Controls method of reflection; options are 'even' or 'odd'.
     original_period : int
         Original length of data on `axis` of `arr`.
+    original_area_slice : tuple of slices
+        Denotes the area with original values of the unpadded array.
     include_edge : bool
         If true, edge value is included in reflection, otherwise the edge
         value forms the symmetric axis to the reflection.
@@ -348,18 +394,22 @@ def _set_reflect_both(padded, axis, width_pair, method,
         # Slice right to left, stop on or next to edge, start relative to stop
         stop = left_pad - edge_offset
         start = stop + chunk_length
-        left_slice = _slice_at_axis(slice(start, stop, -1), axis)
+        left_slice = _roi_slice(slice(start, stop, -1), axis,
+                                original_area_slice)
         left_chunk = padded[left_slice]
 
         if method == "odd":
             # Negate chunk and align with edge
-            edge_slice = _slice_at_axis(slice(left_pad, left_pad + 1), axis)
+            edge_slice = _roi_slice(slice(left_pad, left_pad + 1), axis,
+                                    original_area_slice)
             left_chunk = 2 * padded[edge_slice] - left_chunk
 
-        # Insert chunk into padded area
+        # Insert chunk into padded area. Release `left_chunk` first so it does
+        # not keep `padded` frozen under freeze-on-view (no-op otherwise).
+        left_chunk = _release_if_frozen(left_chunk)
         start = left_pad - chunk_length
         stop = left_pad
-        pad_area = _slice_at_axis(slice(start, stop), axis)
+        pad_area = _roi_slice(slice(start, stop), axis, original_area_slice)
         padded[pad_area] = left_chunk
         # Adjust pointer to left edge for next iteration
         left_pad -= chunk_length
@@ -371,19 +421,22 @@ def _set_reflect_both(padded, axis, width_pair, method,
         # Slice right to left, start on or next to edge, stop relative to start
         start = -right_pad + edge_offset - 2
         stop = start - chunk_length
-        right_slice = _slice_at_axis(slice(start, stop, -1), axis)
+        right_slice = _roi_slice(slice(start, stop, -1), axis,
+                                 original_area_slice)
         right_chunk = padded[right_slice]
 
         if method == "odd":
             # Negate chunk and align with edge
-            edge_slice = _slice_at_axis(
-                slice(-right_pad - 1, -right_pad), axis)
+            edge_slice = _roi_slice(
+                slice(-right_pad - 1, -right_pad), axis, original_area_slice)
             right_chunk = 2 * padded[edge_slice] - right_chunk
 
-        # Insert chunk into padded area
+        # Insert chunk into padded area. Release `right_chunk` first so it does
+        # not keep `padded` frozen under freeze-on-view (no-op otherwise).
+        right_chunk = _release_if_frozen(right_chunk)
         start = padded.shape[axis] - right_pad
         stop = start + chunk_length
-        pad_area = _slice_at_axis(slice(start, stop), axis)
+        pad_area = _roi_slice(slice(start, stop), axis, original_area_slice)
         padded[pad_area] = right_chunk
         # Adjust pointer to right edge for next iteration
         right_pad -= chunk_length
@@ -391,7 +444,8 @@ def _set_reflect_both(padded, axis, width_pair, method,
     return left_pad, right_pad
 
 
-def _set_wrap_both(padded, axis, width_pair, original_period):
+def _set_wrap_both(padded, axis, width_pair, original_period,
+                   original_area_slice):
     """
     Pad `axis` of `arr` with wrapped values.
 
@@ -406,6 +460,8 @@ def _set_wrap_both(padded, axis, width_pair, original_period):
         dimension.
     original_period : int
         Original length of data on `axis` of `arr`.
+    original_area_slice : tuple of slices
+        Denotes the area with original values of the unpadded array.
 
     Returns
     -------
@@ -433,16 +489,22 @@ def _set_wrap_both(padded, axis, width_pair, original_period):
         # pad area.
         slice_end = left_pad + period
         slice_start = slice_end - min(period, left_pad)
-        right_slice = _slice_at_axis(slice(slice_start, slice_end), axis)
+        right_slice = _roi_slice(slice(slice_start, slice_end), axis,
+                                 original_area_slice)
         right_chunk = padded[right_slice]
 
         if left_pad > period:
             # Chunk is smaller than pad area
-            pad_area = _slice_at_axis(slice(left_pad - period, left_pad), axis)
+            pad_area = _roi_slice(slice(left_pad - period, left_pad), axis,
+                                  original_area_slice)
             new_left_pad = left_pad - period
         else:
             # Chunk matches pad area
-            pad_area = _slice_at_axis(slice(None, left_pad), axis)
+            pad_area = _roi_slice(slice(None, left_pad), axis,
+                                  original_area_slice)
+        # Rebind so the original `right_chunk` view does not keep `padded`
+        # frozen during write-back under freeze-on-view (no-op otherwise).
+        right_chunk = _release_if_frozen(right_chunk)
         padded[pad_area] = right_chunk
 
     if right_pad > 0:
@@ -452,17 +514,23 @@ def _set_wrap_both(padded, axis, width_pair, original_period):
         # pad area.
         slice_start = -right_pad - period
         slice_end = slice_start + min(period, right_pad)
-        left_slice = _slice_at_axis(slice(slice_start, slice_end), axis)
+        left_slice = _roi_slice(slice(slice_start, slice_end), axis,
+                                original_area_slice)
         left_chunk = padded[left_slice]
 
         if right_pad > period:
             # Chunk is smaller than pad area
-            pad_area = _slice_at_axis(
-                slice(-right_pad, -right_pad + period), axis)
+            pad_area = _roi_slice(
+                slice(-right_pad, -right_pad + period), axis,
+                original_area_slice)
             new_right_pad = right_pad - period
         else:
             # Chunk matches pad area
-            pad_area = _slice_at_axis(slice(-right_pad, None), axis)
+            pad_area = _roi_slice(slice(-right_pad, None), axis,
+                                  original_area_slice)
+        # Rebind so the original `left_chunk` view does not keep `padded`
+        # frozen during write-back under freeze-on-view (no-op otherwise).
+        left_chunk = _release_if_frozen(left_chunk)
         padded[pad_area] = left_chunk
 
     return new_left_pad, new_right_pad
@@ -848,8 +916,8 @@ def pad(array, pad_width, mode='constant', **kwargs):
         values = kwargs.get("constant_values", 0)
         values = _as_pairs(values, padded.ndim)
         for axis, width_pair, value_pair in zip(axes, pad_width, values):
-            roi = _view_roi(padded, original_area_slice, axis)
-            _set_pad_area(roi, axis, width_pair, value_pair)
+            _set_pad_area(padded, axis, width_pair, value_pair,
+                          original_area_slice)
 
     elif mode == "empty":
         pass  # Do nothing as _pad_simple already returned the correct result
@@ -869,58 +937,65 @@ def pad(array, pad_width, mode='constant', **kwargs):
 
     elif mode == "edge":
         for axis, width_pair in zip(axes, pad_width):
-            roi = _view_roi(padded, original_area_slice, axis)
-            edge_pair = _get_edges(roi, axis, width_pair)
-            _set_pad_area(roi, axis, width_pair, edge_pair)
+            edge_pair = _get_edges(padded, axis, width_pair,
+                                   original_area_slice)
+            _set_pad_area(padded, axis, width_pair, edge_pair,
+                          original_area_slice)
 
     elif mode == "linear_ramp":
         end_values = kwargs.get("end_values", 0)
         end_values = _as_pairs(end_values, padded.ndim)
         for axis, width_pair, value_pair in zip(axes, pad_width, end_values):
-            roi = _view_roi(padded, original_area_slice, axis)
-            ramp_pair = _get_linear_ramps(roi, axis, width_pair, value_pair)
-            _set_pad_area(roi, axis, width_pair, ramp_pair)
+            ramp_pair = _get_linear_ramps(padded, axis, width_pair, value_pair,
+                                          original_area_slice)
+            _set_pad_area(padded, axis, width_pair, ramp_pair,
+                          original_area_slice)
 
     elif mode in stat_functions:
         func = stat_functions[mode]
         length = kwargs.get("stat_length")
         length = _as_pairs(length, padded.ndim, as_index=True)
         for axis, width_pair, length_pair in zip(axes, pad_width, length):
-            roi = _view_roi(padded, original_area_slice, axis)
-            stat_pair = _get_stats(roi, axis, width_pair, length_pair, func)
-            _set_pad_area(roi, axis, width_pair, stat_pair)
+            stat_pair = _get_stats(padded, axis, width_pair, length_pair, func,
+                                   original_area_slice)
+            _set_pad_area(padded, axis, width_pair, stat_pair,
+                          original_area_slice)
 
     elif mode in {"reflect", "symmetric"}:
         method = kwargs.get("reflect_type", "even")
         include_edge = mode == "symmetric"
+        # The legacy singleton-dimension branch below operates on the full
+        # padded array rather than restricting to the original area.
+        full_area_slice = (slice(None),) * padded.ndim
         for axis, (left_index, right_index) in zip(axes, pad_width):
             if array.shape[axis] == 1 and (left_index > 0 or right_index > 0):
                 # Extending singleton dimension for 'reflect' is legacy
                 # behavior; it really should raise an error.
-                edge_pair = _get_edges(padded, axis, (left_index, right_index))
+                edge_pair = _get_edges(padded, axis, (left_index, right_index),
+                                       full_area_slice)
                 _set_pad_area(
-                    padded, axis, (left_index, right_index), edge_pair)
+                    padded, axis, (left_index, right_index), edge_pair,
+                    full_area_slice)
                 continue
 
-            roi = _view_roi(padded, original_area_slice, axis)
             while left_index > 0 or right_index > 0:
                 # Iteratively pad until dimension is filled with reflected
                 # values. This is necessary if the pad area is larger than
                 # the length of the original values in the current dimension.
                 left_index, right_index = _set_reflect_both(
-                    roi, axis, (left_index, right_index),
-                    method, array.shape[axis], include_edge
+                    padded, axis, (left_index, right_index),
+                    method, array.shape[axis], original_area_slice, include_edge
                 )
 
     elif mode == "wrap":
         for axis, (left_index, right_index) in zip(axes, pad_width):
-            roi = _view_roi(padded, original_area_slice, axis)
             original_period = padded.shape[axis] - right_index - left_index
             while left_index > 0 or right_index > 0:
                 # Iteratively pad until dimension is filled with wrapped
                 # values. This is necessary if the pad area is larger than
                 # the length of the original values in the current dimension.
                 left_index, right_index = _set_wrap_both(
-                    roi, axis, (left_index, right_index), original_period)
+                    padded, axis, (left_index, right_index), original_period,
+                    original_area_slice)
 
     return padded
