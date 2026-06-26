@@ -624,7 +624,6 @@ typedef struct {
 typedef struct _PyArray_Descr {
         PyObject_HEAD
 #else
-#pragma pack(push, 4)
 typedef struct _PyArray_Descr_fields {
 #endif
         /*
@@ -633,7 +632,7 @@ typedef struct _PyArray_Descr_fields {
          * be two type_numbers with the same type
          * object.
          */
-        PyTypeObject *typeobj;
+        NPY_DECL_ALIGNED(8) PyTypeObject *typeobj;
         /* kind for this type */
         char kind;
         /* unique-character representing this type */
@@ -660,15 +659,12 @@ typedef struct _PyArray_Descr_fields {
         /* Unused slot (must be initialized to NULL) for future use */
         void *reserved_null[2];
 } PyArray_Descr_fields;
-#ifdef Py_TARGET_ABI3T
-#pragma pack(pop)
-#endif
 
 #else  /* 1.x and 2.x compatible version (only shared fields): */
 
 typedef struct _PyArray_Descr {
         PyObject_HEAD
-        PyTypeObject *typeobj;
+        NPY_DECL_ALIGNED(8) PyTypeObject *typeobj;
         char kind;
         char type;
         char byteorder;
@@ -679,7 +675,7 @@ typedef struct _PyArray_Descr {
 /* To access modified fields, define the full 2.0 struct: */
 typedef struct {
         PyObject_HEAD
-        PyTypeObject *typeobj;
+        NPY_DECL_ALIGNED(8) PyTypeObject *typeobj;
         char kind;
         char type;
         char byteorder;
@@ -702,14 +698,11 @@ typedef struct _PyArray_Descr PyArray_Descr;
  * check NPY_DT_is_legacy before casting/accessing).  The struct is also not
  * valid when running on 1.x (i.e. in public API use).
  */
-#ifdef Py_TARGET_ABI3T
-#pragma pack(push, 4)
-#endif
 typedef struct {
 #ifndef Py_TARGET_ABI3T
         PyObject_HEAD
 #endif
-        PyTypeObject *typeobj;
+        NPY_DECL_ALIGNED(8) PyTypeObject *typeobj;
         char kind;
         char type;
         char byteorder;
@@ -726,9 +719,6 @@ typedef struct {
         PyObject *names;
         NpyAuxData *c_metadata;
 } _PyArray_LegacyDescr_fields;
-#ifdef Py_TARGET_ABI3T
-#pragma pack(pop)
-#endif
 
 #ifdef Py_TARGET_ABI3T
 typedef struct _PyArray_LegacyDescrTag _PyArray_LegacyDescr;
