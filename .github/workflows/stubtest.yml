@@ -25,7 +25,7 @@ concurrency:
 jobs:
   mypy:
     # To enable this workflow on a fork, comment out:
-    if: github.repository == 'numpy/numpy'
+    if: (github.repository == 'numpy/numpy' || github.repository == 'kumaraditya303/numpy')
 
     name: stubtest
     runs-on: ${{ matrix.os }}-latest

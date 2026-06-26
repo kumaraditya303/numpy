@@ -32,7 +32,7 @@ permissions:
 jobs:
   clang_ASAN_UBSAN:
     # To enable this workflow on a fork, comment out:
-    if: github.repository == 'numpy/numpy'
+    if: (github.repository == 'numpy/numpy' || github.repository == 'kumaraditya303/numpy')
     runs-on: macos-latest
     steps:
     - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -84,7 +84,7 @@ jobs:
 
   clang_TSAN:
     # To enable this workflow on a fork, comment out:
-    if: github.repository == 'numpy/numpy'
+    if: (github.repository == 'numpy/numpy' || github.repository == 'kumaraditya303/numpy')
     runs-on: ubuntu-latest
     container:
         image: ghcr.io/nascheme/numpy-tsan:3.14t@sha256:1ec427e2e480cc373d0fecbf21b8ac590fb94119fb81d18489945cd0afd04dd3
@@ -115,7 +115,7 @@ jobs:
 
   clang_ASAN:
     # To enable this workflow on a fork, comment out:
-    if: github.repository == 'numpy/numpy'
+    if: (github.repository == 'numpy/numpy' || github.repository == 'kumaraditya303/numpy')
     runs-on: ubuntu-latest
     container:
         image: ghcr.io/nascheme/cpython-asan:3.14@sha256:b5bfbcdca07e86d22afaf66e3b57959e1c44756452dcabda1efde7711fd0bdde

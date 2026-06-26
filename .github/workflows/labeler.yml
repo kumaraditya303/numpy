@@ -7,7 +7,7 @@ permissions: {}
 
 jobs:
   pr-labeler:
-    if: github.repository == 'numpy/numpy'
+    if: (github.repository == 'numpy/numpy' || github.repository == 'kumaraditya303/numpy')
     runs-on: ubuntu-latest
     permissions:
       pull-requests: write  # to add labels

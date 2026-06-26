@@ -24,7 +24,7 @@ jobs:
     # These jobs runs only in the main NumPy repository.
     # It requires a native ppc64le and s390x GHA runners, which are not available on forks.
     # For more details, see: https://github.com/numpy/numpy/issues/29125
-    if: github.repository == 'numpy/numpy'
+    if: (github.repository == 'numpy/numpy' || github.repository == 'kumaraditya303/numpy')
     runs-on: ${{ matrix.config.runner }}
 
     strategy:

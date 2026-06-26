@@ -23,7 +23,7 @@ jobs:
     name: Clang-cl, x86-64, fast, openblas32
     runs-on: windows-2022
     # To enable this job on a fork, comment out:
-    if: github.repository == 'numpy/numpy'
+    if: (github.repository == 'numpy/numpy' || github.repository == 'kumaraditya303/numpy')
     steps:
     - name: Checkout
       uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -83,7 +83,7 @@ jobs:
             architecture: arm64
             python_version: '3.12'
     # To enable this job on a fork, comment out:
-    if: github.repository == 'numpy/numpy'
+    if: (github.repository == 'numpy/numpy' || github.repository == 'kumaraditya303/numpy')
     steps:
       - name: Checkout
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -139,7 +139,7 @@ jobs:
             pyver: '3.12'
 
     # To enable this job on a fork, comment out:
-    if: github.repository == 'numpy/numpy'
+    if: (github.repository == 'numpy/numpy' || github.repository == 'kumaraditya303/numpy')
     steps:
       - name: Checkout
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0

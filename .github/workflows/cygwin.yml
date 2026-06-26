@@ -21,7 +21,7 @@ jobs:
   cygwin_build_test:
     runs-on: windows-latest
     # To enable this workflow on a fork, comment out:
-    if: github.repository == 'numpy/numpy'
+    if: (github.repository == 'numpy/numpy' || github.repository == 'kumaraditya303/numpy')
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:

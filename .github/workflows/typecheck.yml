@@ -45,7 +45,7 @@ permissions:
 jobs:
   mypy:
     # To enable this workflow on a fork, comment out:
-    if: github.repository == 'numpy/numpy'
+    if: (github.repository == 'numpy/numpy' || github.repository == 'kumaraditya303/numpy')
     name: "MyPy"
     runs-on: ${{ matrix.os_python[0] }}
     strategy:
