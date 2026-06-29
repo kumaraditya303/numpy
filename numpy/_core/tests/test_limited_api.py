@@ -99,9 +99,21 @@ def test_limited_api_abi3(install_temp):
     and building a cython extension with the limited API
     """
 
-    import limited_api1  # Earliest (3.6)  # noqa: F401
+    import limited_api1  # Earliest (3.6)
     import limited_api2  # cython  # noqa: F401
-    import limited_api_latest  # Latest version (current Python)  # noqa: F401
+    import limited_api_latest  # Latest version (current Python)
+
+    import numpy as np
+
+    # Regression test for descriptor field access via the public ABI: on 32-bit
+    # free-threaded builds c_metadata used to read back as NULL (flags alignment).
+    dt = np.dtype("timedelta64[s]")
+    td = np.zeros(3, dtype=dt)
+    for mod in (limited_api1, limited_api_latest):
+        flags, unit, num = mod.datetime_metadata(td)
+        assert flags == dt.flags, (mod.__name__, flags, dt.flags)
+        assert unit == 7, mod.__name__  # NPY_FR_s
+        assert num == 1, mod.__name__
 
 @pytest.mark.skipif(
     sys.version_info < (3, 15), reason="opaque PyObject requires Python 3.15+"

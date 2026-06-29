@@ -34,6 +34,8 @@ if py.get_variable('Py_GIL_DISABLED', 0) == 0
       'limited_api1.c',
       c_args: [
         '-DNPY_NO_DEPRECATED_API=NPY_1_21_API_VERSION',
+        # Require 2.0+ for the datetime descriptor accessors
+        '-DNPY_TARGET_VERSION=NPY_2_0_API_VERSION',
       ],
       include_directories: [npy_include_path],
       limited_api: '3.9',
@@ -44,6 +46,8 @@ if py.get_variable('Py_GIL_DISABLED', 0) == 0
       'limited_api_latest.c',
       c_args: [
         '-DNPY_NO_DEPRECATED_API=NPY_1_21_API_VERSION',
+        # Require 2.0+ for the datetime descriptor accessors
+        '-DNPY_TARGET_VERSION=NPY_2_0_API_VERSION',
       ],
       include_directories: [npy_include_path],
       limited_api: py.language_version(),
