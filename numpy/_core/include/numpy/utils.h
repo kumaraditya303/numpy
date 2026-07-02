@@ -24,12 +24,17 @@
 #endif
 
 /*
- * Force the first field of a struct to be 8-byte aligned on Python 3.15+.
+ * Force the first field of a struct to be 8-byte on 32 bit systems and
+ * 16-byte on 64 bit systems aligned on Python 3.15+.
  * On older versions, this is a no-op. This is needed to avoid breaking ABI for
  * older abi3 or 3.14t wheels that are built older versions of numpy.
  */
 #if PY_VERSION_HEX >= 0x030f0000
+#if SIZEOF_VOID_P == 8
+    #define _NPY_OPAQUE_FIRST_FIELD NPY_DECL_ALIGNED(16)
+#else
     #define _NPY_OPAQUE_FIRST_FIELD NPY_DECL_ALIGNED(8)
+#endif
 #else
     #define _NPY_OPAQUE_FIRST_FIELD
 #endif
