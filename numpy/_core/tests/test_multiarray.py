@@ -528,6 +528,74 @@ class TestFreezeOnView:
                            match="freeze_on_view enabled"):
             a[1:] *= 2
 
+    def test_freeze_on_view_reshape_freezes_base(self):
+        # ``reshape`` on a contiguous array returns a view.  Called on a named
+        # array (not a unique temporary) it is a counted view, so it freezes
+        # the base and is itself read-only, just like a slice.
+        a = np.arange(10)
+        a.flags.freeze_on_view = True
+        b = a.reshape(2, 5)
+        assert b.base is a
+        assert not a.flags.writeable
+        assert not b.flags.writeable
+
+        with pytest.raises(ValueError,
+                           match="freeze_on_view enabled and cannot be"
+                                 " written"):
+            a[0] = 1
+        with pytest.raises(ValueError,
+                           match="freeze_on_view enabled and cannot be"
+                                 " written"):
+            b[0, 0] = 1
+
+        del b
+        gc.collect()
+        # Dropping the reshaped view unfreezes the base.
+        assert a.flags.writeable
+        a[0] = 5
+        assert a[0] == 5
+
+    def test_freeze_on_view_reshape_copy_does_not_freeze(self):
+        # A reshape that cannot be expressed as a view (non-contiguous source
+        # reshaped in C order) returns a fresh copy, not a view.  A copy shares
+        # no memory with the source, so it must not freeze it.
+        a = np.arange(12).reshape(3, 4).T   # non-contiguous
+        a.flags.freeze_on_view = True
+        b = a.reshape(12)
+        assert b.base is not a
+        assert not np.shares_memory(a, b)
+        # Neither array is frozen; both remain writeable.
+        assert a.flags.writeable
+        assert b.flags.writeable
+        b[0] = 99
+        assert a[0, 0] == 0, "copy is independent of the source"
+
+    def test_freeze_on_view_reshape_temporary_not_frozen_global(self):
+        # With freeze_on_view enabled globally, reshaping a uniquely referenced
+        # temporary elides view counting: the source is unreachable by the
+        # user, so freezing it would be pointless and the result must stay
+        # writeable.  A named source is still frozen.
+        from numpy._core._multiarray_umath import _set_freeze_on_view
+        old = _set_freeze_on_view(True)
+        try:
+            # Unique-temporary source: reshape does not freeze, result writeable.
+            b = np.arange(6).reshape(2, 3)
+            assert b.flags.writeable
+            b[0, 0] = 7
+            assert b[0, 0] == 7
+
+            # Named source: the reshaped view counts and freezes it.
+            a = np.arange(6)
+            v = a.reshape(2, 3)
+            assert not a.flags.writeable
+            assert not v.flags.writeable
+            with pytest.raises(ValueError,
+                               match="freeze_on_view enabled and cannot be"
+                                     " written"):
+                a[0] = 1
+        finally:
+            _set_freeze_on_view(old)
+
 
 class TestHash:
     # see #3793
