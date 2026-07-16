@@ -1464,6 +1464,7 @@ python_sources = [
   '_ufunc_config.py',
   '_ufunc_config.pyi',
   '_umath_tests.pyi',
+  '_view_writes.py',
   'arrayprint.py',
   'arrayprint.pyi',
   'cversions.py',

@@ -4579,6 +4579,30 @@ _set_freeze_on_view(PyObject *NPY_UNUSED(self), PyObject *arg)
 }
 
 
+/*
+ * Set the calling thread's freeze-on-view write exemption and return its
+ * previous value, so callers can restore it.  Backs the
+ * ``numpy._core.allow_view_writes()`` context manager; see
+ * `npy_allow_view_writes` in arrayobject.h.
+ */
+static PyObject *
+_set_allow_view_writes(PyObject *NPY_UNUSED(self), PyObject *arg)
+{
+    int res = PyObject_IsTrue(arg);
+    if (res < 0) {
+        return NULL;
+    }
+    int old_value = npy_allow_view_writes;
+    npy_allow_view_writes = res;
+    if (old_value) {
+        Py_RETURN_TRUE;
+    }
+    else {
+        Py_RETURN_FALSE;
+    }
+}
+
+
 static PyObject *
 _blas_supports_fpe(PyObject *NPY_UNUSED(self), PyObject *arg) {
     if (arg == Py_None) {
@@ -4835,6 +4859,11 @@ static struct PyMethodDef array_module_methods[] = {
     {"_set_freeze_on_view",
          (PyCFunction)_set_freeze_on_view,
          METH_O, "Globally enable freeze-on-view for all arrays."},
+    {"_set_allow_view_writes",
+         (PyCFunction)_set_allow_view_writes,
+         METH_O,
+         "Allow writing to freeze-on-view arrays on this thread. "
+         "Returns the previous value."},
     {"_get_sfloat_dtype",
         get_sfloat_dtype, METH_NOARGS, NULL},
     {"_get_madvise_hugepage", (PyCFunction)_get_madvise_hugepage,

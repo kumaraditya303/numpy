@@ -606,6 +606,29 @@ array_might_be_written(PyArrayObject *obj)
     return 0;
 }
 
+NPY_NO_EXPORT NPY_TLS int npy_allow_view_writes = 0;
+
+/*
+ * True when `obj` is read-only *because* of freeze-on-view -- it is either a
+ * frozen base or a view of one -- and the calling thread is inside an
+ * ``allow_view_writes()`` context.  Mirrors the two freeze-on-view branches of
+ * `PyArray_FailUnlessWriteable` below, so the exemption covers exactly the
+ * errors that context manager is meant to suppress and nothing else.
+ */
+static inline int
+freeze_on_view_write_allowed(PyArrayObject *obj)
+{
+    if (!npy_allow_view_writes) {
+        return 0;
+    }
+    if (PyArray_CHKFLAGS(obj, NPY_ARRAY_FREEZE_ON_VIEW)) {
+        return 1;
+    }
+    PyObject *base = PyArray_BASE(obj);
+    return base != NULL && PyArray_Check(base) &&
+            PyArray_CHKFLAGS((PyArrayObject *)base, NPY_ARRAY_FREEZE_ON_VIEW);
+}
+
 /*NUMPY_API
  *
  *  This function does nothing and returns 0 if *obj* is writeable.
@@ -621,7 +644,7 @@ array_might_be_written(PyArrayObject *obj)
 NPY_NO_EXPORT int
 PyArray_FailUnlessWriteable(PyArrayObject *obj, const char *name)
 {
-    if (!PyArray_ISWRITEABLE(obj)) {
+    if (!PyArray_ISWRITEABLE(obj) && !freeze_on_view_write_allowed(obj)) {
         PyObject *base = PyArray_BASE(obj);
         if (PyArray_CHKFLAGS(obj, NPY_ARRAY_FREEZE_ON_VIEW)) {
             PyErr_Format(PyExc_ValueError,

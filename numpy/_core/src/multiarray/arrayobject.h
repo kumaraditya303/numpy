@@ -48,6 +48,15 @@ static const int NPY_ARRAY_FREEZE_ON_VIEW = (1 << 25);
  */
 static const int NPY_ARRAY_VIEW_DONT_COUNT = (1 << 24);
 
+/*
+ * Non-zero while an ``numpy._core.allow_view_writes()`` context is active on
+ * the calling thread.  It suppresses only the freeze-on-view write guard, so
+ * a frozen base and its views can be written to; every other reason for an
+ * array to be read-only still applies.  Thread local, since the exemption must
+ * not leak into writes made by other threads.
+ */
+extern NPY_NO_EXPORT NPY_TLS int npy_allow_view_writes;
+
 
 /*
  * These flags are used internally to indicate an array that was previously

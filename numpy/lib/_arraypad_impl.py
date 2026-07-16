@@ -6,6 +6,7 @@ of an n-dimensional array.
 import typing
 
 import numpy as np
+from numpy._core import allow_view_writes
 from numpy._core.overrides import array_function_dispatch
 from numpy.lib._index_tricks_impl import ndindex
 
@@ -866,19 +867,24 @@ def pad(array, pad_width, mode='constant', **kwargs):
         padded, _ = _pad_simple(array, pad_width, fill_value=0)
         # And apply along each axis
 
-        for axis in range(padded.ndim):
-            # Iterate using ndindex as in apply_along_axis, but assuming that
-            # function operates inplace on the padded array.
+        # ``function`` is documented to modify in place the vector it is
+        # handed, which is a view of ``padded`` and therefore read-only under
+        # freeze-on-view.  ``padded`` is internal until returned, so lift the
+        # freeze for the fill.
+        with allow_view_writes():
+            for axis in range(padded.ndim):
+                # Iterate using ndindex as in apply_along_axis, but assuming
+                # that function operates inplace on the padded array.
 
-            # view with the iteration axis at the end
-            view = np.moveaxis(padded, axis, -1)
+                # view with the iteration axis at the end
+                view = np.moveaxis(padded, axis, -1)
 
-            # compute indices for the iteration axes, and append a trailing
-            # ellipsis to prevent 0d arrays decaying to scalars (gh-8642)
-            inds = ndindex(view.shape[:-1])
-            inds = (ind + (Ellipsis,) for ind in inds)
-            for ind in inds:
-                function(view[ind], pad_width[axis], axis, kwargs)
+                # compute indices for the iteration axes, and append a trailing
+                # ellipsis to prevent 0d arrays decaying to scalars (gh-8642)
+                inds = ndindex(view.shape[:-1])
+                inds = (ind + (Ellipsis,) for ind in inds)
+                for ind in inds:
+                    function(view[ind], pad_width[axis], axis, kwargs)
 
         return padded
 

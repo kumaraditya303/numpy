@@ -528,6 +528,97 @@ class TestFreezeOnView:
                            match="freeze_on_view enabled"):
             a[1:] *= 2
 
+    def test_freeze_on_view_allow_view_writes(self):
+        # ``allow_view_writes`` lifts the freeze for the duration of the
+        # context, for both the frozen base and its views.
+        from numpy._core import allow_view_writes
+
+        a = np.arange(5)
+        a.flags.freeze_on_view = True
+        v = a[1:]
+
+        with allow_view_writes():
+            a[0] = 10
+            v[0] = 20
+            # The ufunc and slice-assignment paths are exempted too.
+            np.add(a, 1, out=a)
+            a[2:] = 7
+        assert_array_equal(a, [11, 21, 7, 7, 7])
+
+        # Outside the context the freeze applies again.
+        with pytest.raises(ValueError,
+                           match="freeze_on_view enabled and cannot be"
+                                 " written"):
+            a[0] = 99
+        with pytest.raises(ValueError,
+                           match="freeze_on_view enabled"):
+            v[0] = 99
+
+    def test_freeze_on_view_allow_view_writes_only_unfreezes(self):
+        # Arrays that are read-only for reasons other than freeze-on-view must
+        # keep raising inside the context.
+        from numpy._core import allow_view_writes
+
+        ro = np.arange(3)
+        ro.flags.writeable = False
+        b = np.broadcast_to(np.arange(3), (2, 3))
+
+        with allow_view_writes():
+            with pytest.raises(ValueError, match="read-only"):
+                ro[0] = 1
+            with pytest.raises(ValueError, match="read-only"):
+                b[0, 0] = 1
+
+    def test_freeze_on_view_allow_view_writes_restores(self):
+        # Nesting and exceptions must both restore the previous setting.
+        from numpy._core import allow_view_writes
+
+        a = np.arange(5)
+        a.flags.freeze_on_view = True
+        v = a[1:]  # noqa: F841  keep the base frozen
+
+        with allow_view_writes():
+            with allow_view_writes():
+                a[0] = 1
+            # The inner context exiting must not end the outer one.
+            a[0] = 2
+        with pytest.raises(ValueError, match="freeze_on_view enabled"):
+            a[0] = 3
+
+        with pytest.raises(RuntimeError):
+            with allow_view_writes():
+                raise RuntimeError("boom")
+        with pytest.raises(ValueError, match="freeze_on_view enabled"):
+            a[0] = 4
+
+    def test_freeze_on_view_allow_view_writes_thread_local(self):
+        # The exemption is thread-local: a context entered on this thread must
+        # not let another thread write to the frozen array.
+        import threading
+
+        from numpy._core import allow_view_writes
+
+        a = np.arange(5)
+        a.flags.freeze_on_view = True
+        v = a[1:]  # noqa: F841  keep the base frozen
+
+        failures = []
+
+        def worker():
+            try:
+                a[0] = 42
+            except ValueError:
+                pass
+            else:
+                failures.append("write leaked into another thread")
+
+        with allow_view_writes():
+            t = threading.Thread(target=worker)
+            t.start()
+            t.join()
+
+        assert not failures, failures[0]
+
     def test_freeze_on_view_reshape_freezes_base(self):
         # ``reshape`` on a contiguous array returns a view.  Called on a named
         # array (not a unique temporary) it is a counted view, so it freezes
