@@ -424,7 +424,8 @@ class TestFreezeOnView:
     def test_eye_with_global_freeze_on_view(self):
         # np.eye writes the diagonal via ``m[:M - k].flat[...] = 1``, which
         # takes an internal view of the freshly created array.  With
-        # freeze_on_view enabled globally that view must not freeze the base,
+        # freeze_on_view enabled globally that view freezes the array under
+        # construction, so ``eye`` writes it under ``allow_view_writes``;
         # otherwise the construction would fail.
         from numpy._core._multiarray_umath import _set_freeze_on_view
         old = _set_freeze_on_view(True)
