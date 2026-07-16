@@ -831,10 +831,9 @@ def pad(array, pad_width, mode='constant', **kwargs):
         padded, _ = _pad_simple(array, pad_width, fill_value=0)
         # And apply along each axis
 
-        # ``function`` is documented to modify in place the vector it is
-        # handed, which is a view of ``padded`` and therefore read-only under
-        # freeze-on-view.  ``padded`` is internal until returned, so lift the
-        # freeze for the fill.
+        # `function` fills in place the vector it is handed, which is a view of
+        # `padded` and so read-only under freeze-on-view.  `padded` is internal
+        # until returned, so lift the freeze for the fill.
         with allow_view_writes():
             for axis in range(padded.ndim):
                 # Iterate using ndindex as in apply_along_axis, but assuming
@@ -882,89 +881,94 @@ def pad(array, pad_width, mode='constant', **kwargs):
     # (zipping may be more readable than using enumerate)
     axes = range(padded.ndim)
 
-    if mode == "constant":
-        values = kwargs.get("constant_values", 0)
-        values = _as_pairs(values, padded.ndim)
-        for axis, width_pair, value_pair in zip(axes, pad_width, values):
-            roi = _view_roi(padded, original_area_slice, axis)
-            _set_pad_area(roi, axis, width_pair, value_pair)
+    # The padding below reads chunks of `padded` and writes them back into its
+    # pad area.  Those chunks are views, which freeze `padded` under
+    # freeze-on-view; `padded` is internal until returned, so lift the freeze.
+    with allow_view_writes():
+        if mode == "constant":
+            values = kwargs.get("constant_values", 0)
+            values = _as_pairs(values, padded.ndim)
+            for axis, width_pair, value_pair in zip(axes, pad_width, values):
+                roi = _view_roi(padded, original_area_slice, axis)
+                _set_pad_area(roi, axis, width_pair, value_pair)
 
-    elif mode == "empty":
-        pass  # Do nothing as _pad_simple already returned the correct result
+        elif mode == "empty":
+            pass  # Do nothing as _pad_simple already returned the correct result
 
-    elif array.size == 0:
-        # Only modes "constant" and "empty" can extend empty axes, all other
-        # modes depend on `array` not being empty
-        # -> ensure every empty axis is only "padded with 0"
-        for axis, width_pair in zip(axes, pad_width):
-            if array.shape[axis] == 0 and any(width_pair):
-                raise ValueError(
-                    f"can't extend empty axis {axis} using modes other than "
-                    "'constant' or 'empty'"
-                )
-        # passed, don't need to do anything more as _pad_simple already
-        # returned the correct result
+        elif array.size == 0:
+            # Only modes "constant" and "empty" can extend empty axes, all other
+            # modes depend on `array` not being empty
+            # -> ensure every empty axis is only "padded with 0"
+            for axis, width_pair in zip(axes, pad_width):
+                if array.shape[axis] == 0 and any(width_pair):
+                    raise ValueError(
+                        f"can't extend empty axis {axis} using modes other than "
+                        "'constant' or 'empty'"
+                    )
+            # passed, don't need to do anything more as _pad_simple already
+            # returned the correct result
 
-    elif mode == "edge":
-        for axis, width_pair in zip(axes, pad_width):
-            roi = _view_roi(padded, original_area_slice, axis)
-            edge_pair = _get_edges(roi, axis, width_pair)
-            _set_pad_area(roi, axis, width_pair, edge_pair)
+        elif mode == "edge":
+            for axis, width_pair in zip(axes, pad_width):
+                roi = _view_roi(padded, original_area_slice, axis)
+                edge_pair = _get_edges(roi, axis, width_pair)
+                _set_pad_area(roi, axis, width_pair, edge_pair)
 
-    elif mode == "linear_ramp":
-        end_values = kwargs.get("end_values", 0)
-        end_values = _as_pairs(end_values, padded.ndim)
-        for axis, width_pair, value_pair in zip(axes, pad_width, end_values):
-            roi = _view_roi(padded, original_area_slice, axis)
-            if not any(width_pair):
-                _validate_zero_width_linear_ramp(roi, axis, value_pair)
-                continue
-            ramp_pair = _get_linear_ramps(roi, axis, width_pair, value_pair)
-            _set_pad_area(roi, axis, width_pair, ramp_pair)
+        elif mode == "linear_ramp":
+            end_values = kwargs.get("end_values", 0)
+            end_values = _as_pairs(end_values, padded.ndim)
+            for axis, width_pair, value_pair in zip(axes, pad_width, end_values):
+                roi = _view_roi(padded, original_area_slice, axis)
+                if not any(width_pair):
+                    _validate_zero_width_linear_ramp(roi, axis, value_pair)
+                    continue
+                ramp_pair = _get_linear_ramps(roi, axis, width_pair, value_pair)
+                _set_pad_area(roi, axis, width_pair, ramp_pair)
 
-    elif mode in stat_functions:
-        func = stat_functions[mode]
-        length = kwargs.get("stat_length")
-        length = _as_pairs(length, padded.ndim, as_index=True)
-        for axis, width_pair, length_pair in zip(axes, pad_width, length):
-            roi = _view_roi(padded, original_area_slice, axis)
-            if not any(width_pair):
-                _validate_zero_width_stat(roi, axis, length_pair, func)
-                continue
-            stat_pair = _get_stats(roi, axis, width_pair, length_pair, func)
-            _set_pad_area(roi, axis, width_pair, stat_pair)
+        elif mode in stat_functions:
+            func = stat_functions[mode]
+            length = kwargs.get("stat_length")
+            length = _as_pairs(length, padded.ndim, as_index=True)
+            for axis, width_pair, length_pair in zip(axes, pad_width, length):
+                roi = _view_roi(padded, original_area_slice, axis)
+                if not any(width_pair):
+                    _validate_zero_width_stat(roi, axis, length_pair, func)
+                    continue
+                stat_pair = _get_stats(roi, axis, width_pair, length_pair, func)
+                _set_pad_area(roi, axis, width_pair, stat_pair)
 
-    elif mode in {"reflect", "symmetric"}:
-        method = kwargs.get("reflect_type", "even")
-        include_edge = mode == "symmetric"
-        for axis, (left_index, right_index) in zip(axes, pad_width):
-            if array.shape[axis] == 1 and (left_index > 0 or right_index > 0):
-                # Extending singleton dimension for 'reflect' is legacy
-                # behavior; it really should raise an error.
-                edge_pair = _get_edges(padded, axis, (left_index, right_index))
-                _set_pad_area(
-                    padded, axis, (left_index, right_index), edge_pair)
-                continue
+        elif mode in {"reflect", "symmetric"}:
+            method = kwargs.get("reflect_type", "even")
+            include_edge = mode == "symmetric"
+            for axis, (left_index, right_index) in zip(axes, pad_width):
+                if array.shape[axis] == 1 and (left_index > 0 or right_index > 0):
+                    # Extending singleton dimension for 'reflect' is legacy
+                    # behavior; it really should raise an error.
+                    edge_pair = _get_edges(
+                        padded, axis, (left_index, right_index))
+                    _set_pad_area(
+                        padded, axis, (left_index, right_index), edge_pair)
+                    continue
 
-            roi = _view_roi(padded, original_area_slice, axis)
-            while left_index > 0 or right_index > 0:
-                # Iteratively pad until dimension is filled with reflected
-                # values. This is necessary if the pad area is larger than
-                # the length of the original values in the current dimension.
-                left_index, right_index = _set_reflect_both(
-                    roi, axis, (left_index, right_index),
-                    method, array.shape[axis], include_edge
-                )
+                roi = _view_roi(padded, original_area_slice, axis)
+                while left_index > 0 or right_index > 0:
+                    # Iteratively pad until dimension is filled with reflected
+                    # values. This is necessary if the pad area is larger than
+                    # the length of the original values in the current dimension.
+                    left_index, right_index = _set_reflect_both(
+                        roi, axis, (left_index, right_index),
+                        method, array.shape[axis], include_edge
+                    )
 
-    elif mode == "wrap":
-        for axis, (left_index, right_index) in zip(axes, pad_width):
-            roi = _view_roi(padded, original_area_slice, axis)
-            original_period = padded.shape[axis] - right_index - left_index
-            while left_index > 0 or right_index > 0:
-                # Iteratively pad until dimension is filled with wrapped
-                # values. This is necessary if the pad area is larger than
-                # the length of the original values in the current dimension.
-                left_index, right_index = _set_wrap_both(
-                    roi, axis, (left_index, right_index), original_period)
+        elif mode == "wrap":
+            for axis, (left_index, right_index) in zip(axes, pad_width):
+                roi = _view_roi(padded, original_area_slice, axis)
+                original_period = padded.shape[axis] - right_index - left_index
+                while left_index > 0 or right_index > 0:
+                    # Iteratively pad until dimension is filled with wrapped
+                    # values. This is necessary if the pad area is larger than
+                    # the length of the original values in the current dimension.
+                    left_index, right_index = _set_wrap_both(
+                        roi, axis, (left_index, right_index), original_period)
 
     return padded

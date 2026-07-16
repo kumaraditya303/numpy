@@ -246,14 +246,11 @@ def eye(N, M=None, k=0, dtype=float, order='C', *, device=None, like=None):
         i = k
     else:
         i = (-k) * M
-    # Write the diagonal straight through ``m.flat`` instead of via a
-    # ``m[:M - k]`` slice.  The slice would create a view of ``m`` and, when
-    # freeze_on_view is enabled, that freezes ``m`` before the diagonal is
-    # written.  ``.flat`` assignment writes directly to ``m`` without taking
-    # a view.  ``m[:M - k]`` is a contiguous logical prefix of ``m``, so
-    # ``m[:M - k].flat[i::M + 1]`` is exactly ``m.flat[i:nrows * M:M + 1]``.
-    nrows = min(operator.index(N), M - k)
-    m.flat[i:nrows * M:M + 1] = 1
+    # The ``m[:M - k]`` slice is a view of the array being built, which
+    # freezes ``m`` under freeze-on-view.  ``m`` is not visible to the caller
+    # yet, so writing the diagonal through the view is safe.
+    with allow_view_writes():
+        m[:M - k].flat[i::M + 1] = 1
     return m
 
 
