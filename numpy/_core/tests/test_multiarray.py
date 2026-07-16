@@ -546,7 +546,6 @@ class TestFreezeOnView:
             a[2:] = 7
         assert_array_equal(a, [11, 21, 7, 7, 7])
 
-        # Outside the context the freeze applies again.
         with pytest.raises(ValueError,
                            match="freeze_on_view enabled and cannot be"
                                  " written"):
@@ -642,35 +641,30 @@ class TestFreezeOnView:
 
         del b
         gc.collect()
-        # Dropping the reshaped view unfreezes the base.
         assert a.flags.writeable
         a[0] = 5
         assert a[0] == 5
 
     def test_freeze_on_view_reshape_copy_does_not_freeze(self):
-        # A reshape that cannot be expressed as a view (non-contiguous source
-        # reshaped in C order) returns a fresh copy, not a view.  A copy shares
-        # no memory with the source, so it must not freeze it.
+        # A reshape that cannot be a view returns a copy, which must not
+        # freeze the source.
         a = np.arange(12).reshape(3, 4).T   # non-contiguous
         a.flags.freeze_on_view = True
         b = a.reshape(12)
         assert b.base is not a
         assert not np.shares_memory(a, b)
-        # Neither array is frozen; both remain writeable.
         assert a.flags.writeable
         assert b.flags.writeable
         b[0] = 99
         assert a[0, 0] == 0, "copy is independent of the source"
 
     def test_freeze_on_view_reshape_temporary_not_frozen_global(self):
-        # With freeze_on_view enabled globally, reshaping a uniquely referenced
-        # temporary elides view counting: the source is unreachable by the
-        # user, so freezing it would be pointless and the result must stay
-        # writeable.  A named source is still frozen.
+        # Reshaping a uniquely referenced temporary elides view counting;
+        # a named source is still frozen.
         from numpy._core._multiarray_umath import _set_freeze_on_view
         old = _set_freeze_on_view(True)
         try:
-            # Unique-temporary source: reshape does not freeze, result writeable.
+            # Unique-temporary source: not frozen, stays writeable.
             b = np.arange(6).reshape(2, 3)
             assert b.flags.writeable
             b[0, 0] = 7

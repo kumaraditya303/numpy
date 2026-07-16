@@ -1963,8 +1963,7 @@ def _integer_repr(x, vdt, comp):
     # take into account two-complement representation
     # See also
     # https://randomascii.wordpress.com/2012/02/25/comparing-floating-point-numbers-2012-edition/
-    # Copy: the transform below is in-place, and ``x.view(vdt)`` aliases ``x``
-    # (which is also read-only under freeze-on-view, as the view freezes it).
+    # Copy: the transform below is in-place and ``x.view(vdt)`` aliases ``x``.
     rx = x.view(vdt).copy()
     if not (rx.size == 1):
         rx[rx < 0] = comp - rx[rx < 0]

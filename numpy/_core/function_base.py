@@ -188,8 +188,7 @@ def linspace(start, stop, num=50, endpoint=True, retstep=False, dtype=None,
         y = _nx.moveaxis(y, 0, axis)
 
     if integer_dtype:
-        # `moveaxis` makes `y` a view, which is read-only under freeze-on-view.
-        # `y` is internal until returned, so rounding it in place is safe.
+        # `y` is a view after `moveaxis`, but not visible to the caller yet.
         with allow_view_writes():
             _nx.floor(y, out=y)
 

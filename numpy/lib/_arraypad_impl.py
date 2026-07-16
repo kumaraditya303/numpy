@@ -799,9 +799,7 @@ def pad(array, pad_width, mode='constant', **kwargs):
         padded, _ = _pad_simple(array, pad_width, fill_value=0)
         # And apply along each axis
 
-        # `function` fills in place the vector it is handed, which is a view of
-        # `padded` and so read-only under freeze-on-view.  `padded` is internal
-        # until returned, so lift the freeze for the fill.
+        # `function` fills the view it is handed; `padded` is not visible yet.
         with allow_view_writes():
             for axis in range(padded.ndim):
                 # Iterate using ndindex as in apply_along_axis, but assuming
@@ -849,9 +847,7 @@ def pad(array, pad_width, mode='constant', **kwargs):
     # (zipping may be more readable than using enumerate)
     axes = range(padded.ndim)
 
-    # The padding below reads chunks of `padded` and writes them back into its
-    # pad area.  Those chunks are views, which freeze `padded` under
-    # freeze-on-view; `padded` is internal until returned, so lift the freeze.
+    # Padding writes back through views of `padded`, not visible to the caller.
     with allow_view_writes():
         if mode == "constant":
             values = kwargs.get("constant_values", 0)
