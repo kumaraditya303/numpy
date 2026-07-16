@@ -119,6 +119,7 @@ from .memmap import *
 from .numeric import *
 from .records import recarray, record
 from .shape_base import *
+from ._view_writes import allow_view_writes
 
 del nt
 

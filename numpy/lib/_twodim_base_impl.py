@@ -6,7 +6,7 @@ import operator
 import os
 import warnings
 
-from numpy._core import iinfo, overrides
+from numpy._core import allow_view_writes, iinfo, overrides
 from numpy._core._multiarray_umath import _array_converter
 from numpy._core.numeric import (
     arange,
@@ -679,11 +679,15 @@ def vander(x, N=None, increasing=False):
     v = empty((len(x), N), dtype=promote_types(x.dtype, int))
     tmp = v[:, ::-1] if not increasing else v
 
-    if N > 0:
-        tmp[:, 0] = 1
-    if N > 1:
-        tmp[:, 1:] = x[:, None]
-        multiply.accumulate(tmp[:, 1:], out=tmp[:, 1:], axis=1)
+    # ``tmp`` is a view of the array being built, which freezes ``v`` under
+    # freeze-on-view.  Nothing outside can observe ``v`` before it is returned,
+    # so filling it through the view is safe.
+    with allow_view_writes():
+        if N > 0:
+            tmp[:, 0] = 1
+        if N > 1:
+            tmp[:, 1:] = x[:, None]
+            multiply.accumulate(tmp[:, 1:], out=tmp[:, 1:], axis=1)
 
     return v
 
