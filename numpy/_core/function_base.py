@@ -7,6 +7,7 @@ import warnings
 import numpy as np
 from numpy._core import overrides
 from numpy._core._multiarray_umath import _array_converter
+from numpy._core._view_writes import allow_view_writes
 from numpy._core.multiarray import add_docstring
 
 from . import numeric as _nx
@@ -188,14 +189,13 @@ def linspace(start, stop, num=50, endpoint=True, retstep=False, dtype=None,
     if endpoint and num > 1:
         y[-1, ...] = stop
 
-    # Round before `moveaxis`: `floor(y, out=y)` must write to `y` while it is
-    # still the owning array, since the moved-axis result is a read-only view
-    # under freeze-on-view.
-    if integer_dtype:
-        _nx.floor(y, out=y)
-
     if axis != 0:
         y = _nx.moveaxis(y, 0, axis)
+
+    if integer_dtype:
+        # `y` is a view after `moveaxis`, but not visible to the caller yet.
+        with allow_view_writes():
+            _nx.floor(y, out=y)
 
     y = y.astype(dtype, copy=False)
     if retstep:

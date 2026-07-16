@@ -609,11 +609,9 @@ array_might_be_written(PyArrayObject *obj)
 NPY_NO_EXPORT NPY_TLS int npy_allow_view_writes = 0;
 
 /*
- * True when `obj` is read-only *because* of freeze-on-view -- it is either a
- * frozen base or a view of one -- and the calling thread is inside an
- * ``allow_view_writes()`` context.  Mirrors the two freeze-on-view branches of
- * `PyArray_FailUnlessWriteable` below, so the exemption covers exactly the
- * errors that context manager is meant to suppress and nothing else.
+ * True when `obj` is read-only only because of freeze-on-view -- a frozen base
+ * or a view of one -- and the calling thread is inside `allow_view_writes()`.
+ * The conditions mirror the freeze branches of `PyArray_FailUnlessWriteable`.
  */
 static inline int
 freeze_on_view_write_allowed(PyArrayObject *obj)

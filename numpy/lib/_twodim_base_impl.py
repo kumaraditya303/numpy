@@ -246,9 +246,7 @@ def eye(N, M=None, k=0, dtype=float, order='C', *, device=None, like=None):
         i = k
     else:
         i = (-k) * M
-    # The ``m[:M - k]`` slice is a view of the array being built, which
-    # freezes ``m`` under freeze-on-view.  ``m`` is not visible to the caller
-    # yet, so writing the diagonal through the view is safe.
+    # ``m[:M - k]`` is a view, but ``m`` is not visible to the caller yet.
     with allow_view_writes():
         m[:M - k].flat[i::M + 1] = 1
     return m
@@ -676,9 +674,7 @@ def vander(x, N=None, increasing=False):
     v = empty((len(x), N), dtype=promote_types(x.dtype, int))
     tmp = v[:, ::-1] if not increasing else v
 
-    # ``tmp`` is a view of the array being built, which freezes ``v`` under
-    # freeze-on-view.  Nothing outside can observe ``v`` before it is returned,
-    # so filling it through the view is safe.
+    # ``tmp`` may be a view, but ``v`` is not visible to the caller yet.
     with allow_view_writes():
         if N > 0:
             tmp[:, 0] = 1
