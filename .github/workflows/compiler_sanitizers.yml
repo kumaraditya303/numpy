@@ -96,7 +96,7 @@ jobs:
         run: |
           git config --global --add safe.directory /__w/numpy/numpy
           git submodule update --init --recursive
-      - name: Get OpenBLAS version ci_requirements.txt
+      - name: Get OpenBLAS version
         run: |
           version=$(sed -nE 's/^scipy-openblas64==([0-9]+\.[0-9]+\.[0-9]+)\..*$/\1/p' requirements/ci_requirements.txt)
           if [ -z "$version" ]; then
@@ -113,9 +113,6 @@ jobs:
 
       - name: Upgrade spin (gh-29777)
         run: pip install -U spin
-
-      - name: Install OpenBLAS build tools
-        run: pip install cmake
 
       - name: Set up ccache
         run: |
@@ -140,6 +137,7 @@ jobs:
       - name: Build OpenBLAS with ThreadSanitizer
         if: steps.cache-openblas.outputs.cache-hit != 'true'
         run: |
+          pip install cmake
           git clone --depth 1 --branch $OPENBLAS_VERSION \
             https://github.com/OpenMathLib/OpenBLAS.git openblas-src
           # Follows OpenBLAS's own TSAN CI (linux_thread_sanitizer), see
@@ -175,7 +173,9 @@ jobs:
           export PKG_CONFIG_PATH=$GITHUB_WORKSPACE/openblas-tsan/lib/pkgconfig
           export CC="ccache $CC" CXX="ccache $CXX"
           export LDFLAGS="-fsanitize=thread"
-          python -m spin build -j2 -- -Db_sanitize=thread \
+          python -m spin build -j4 -- -Db_sanitize=thread \
+            -Dbuildtype=debugoptimized -Dcpu-dispatch=none \
+            -Ddisable-intel-sort=true -Ddisable-highway=true -Ddisable-svml=true \
             -Dblas=openblas -Dlapack=openblas -Dallow-noblas=false
           ccache -s
 
