@@ -40,6 +40,7 @@ from secrets import randbits
 
 from threading import RLock
 
+cimport cython
 from cpython.pycapsule cimport PyCapsule_New
 
 import numpy as np
@@ -483,20 +484,36 @@ cdef class SeedSequence:
             Equivalent method on the generator and bit generator.
 
         """
-        cdef uint32_t i
+        cdef uint64_t i, start, stop
+        cdef Py_ssize_t n
+        cdef bint overflow
 
         if n_children < 0:
             raise ValueError("n_children must be non-negative")
+        n = n_children
+
+        # Reserve the range of child indices atomically, so that concurrent
+        # calls never hand out the same spawn key.  The critical section
+        # must only contain C code: anything that can call back into Python
+        # may suspend it (or release the GIL on the GIL-enabled build).
+        with cython.critical_section(self):
+            start = self.n_children_spawned
+            stop = start + <uint64_t>n
+            overflow = stop > MASK32
+            if not overflow:
+                self.n_children_spawned = <uint32_t>stop
+        if overflow:
+            raise OverflowError(
+                "cannot spawn more than 2**32 - 1 children from a single "
+                "SeedSequence")
 
         seqs = []
-        for i in range(self.n_children_spawned,
-                       self.n_children_spawned + n_children):
+        for i in range(start, stop):
             seqs.append(type(self)(
                 self.entropy,
                 spawn_key=self.spawn_key + (i,),
                 pool_size=self.pool_size,
             ))
-        self.n_children_spawned += n_children
         return seqs
 
 

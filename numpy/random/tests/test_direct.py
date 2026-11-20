@@ -18,11 +18,13 @@ from numpy.random import (
 )
 from numpy.random._common import interface
 from numpy.testing import (
+    IS_WASM,
     assert_allclose,
     assert_array_equal,
     assert_equal,
     assert_raises,
 )
+from numpy.testing._private.utils import run_threaded
 
 try:
     import cffi  # noqa: F401
@@ -159,6 +161,41 @@ def test_seedsequence():
     dummy = SeedlessSeedSequence()
     assert_raises(NotImplementedError, dummy.generate_state, 10)
     assert len(dummy.spawn(10)) == 10
+
+
+@pytest.mark.skipif(IS_WASM, reason="can't start thread")
+@pytest.mark.thread_unsafe(reason="modifies the thread switch interval")
+def test_seedsequence_spawn_thread_safe():
+    # gh-32063: concurrent spawns must not hand out duplicate spawn keys.
+    n_threads = 4
+    n_children = 500
+    seed_seq = SeedSequence(100)
+    results = [None] * n_threads
+
+    def spawn(index, barrier):
+        barrier.wait()
+        results[index] = seed_seq.spawn(n_children)
+
+    # A short switch interval makes the GIL-enabled build interleave threads.
+    old_switch_interval = sys.getswitchinterval()
+    sys.setswitchinterval(1e-5)
+    try:
+        run_threaded(spawn, max_workers=n_threads, pass_count=True,
+                     pass_barrier=True)
+    finally:
+        sys.setswitchinterval(old_switch_interval)
+
+    spawn_keys = {child.spawn_key for result in results for child in result}
+    assert len(spawn_keys) == n_threads * n_children
+    assert seed_seq.n_children_spawned == n_threads * n_children
+
+
+def test_seedsequence_spawn_overflow():
+    seed_seq = SeedSequence(100, n_children_spawned=2**32 - 2)
+    assert_raises(OverflowError, seed_seq.spawn, 2)
+    # A failed spawn does not consume any spawn keys.
+    assert seed_seq.n_children_spawned == 2**32 - 2
+    assert [c.spawn_key for c in seed_seq.spawn(1)] == [(2**32 - 2,)]
 
 
 def test_generator_spawning():

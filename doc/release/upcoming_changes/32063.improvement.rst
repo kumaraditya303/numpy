@@ -1,0 +1,7 @@
+``SeedSequence.spawn`` is now thread-safe
+-----------------------------------------
+Calling `numpy.random.SeedSequence.spawn` on the same ``SeedSequence`` from
+multiple threads could return children with identical spawn keys, and so
+identical random streams. The spawn counter is now updated atomically, which
+also makes `numpy.random.BitGenerator.spawn` and `numpy.random.Generator.spawn`
+safe to call concurrently.
